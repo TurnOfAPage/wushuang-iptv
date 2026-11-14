@@ -1,0 +1,29 @@
+# 构建产物
+build/
+dist/
+*.spec
+__pycache__/
+*.pyc
+
+# 运行时生成（含本机信息，绝不入库）
+WushuangIPTV.json
+IPTVTool.json
+refdb.json
+refdb.json.gz
+cap_temp/
+cap/
+*.pcap
+*.pcapng
+*.etl
+*.ts
+verify_results.json
+bad_channels.txt
+
+# 社区参考数据（运行时下载，不捆绑）
+ref/
+
+# 编辑器/系统
+.idea/
+.vscode/
+Thumbs.db
+Desktop.ini
