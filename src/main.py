@@ -2,7 +2,7 @@
 """无双IPTV抓源工具 · Windows 单文件绿色版
 接线向导 → pktmon 抓包分析 → 原生组播验证 → M3U 生成/目录更新 → 可选 HTTP 转发。
 全国 31 省×运营商组播参考库，支持在线更新/离线导入。
-作者：锤无双  https://www.bilibili.com/video/BV1hTxx69EFY/
+作者：锤无双  https://www.bilibili.com/video/BV17SWk6VEPZ/
 """
 import copy
 import json
@@ -30,7 +30,7 @@ import wizard
 APP_NAME = '无双IPTV抓源工具'
 APP_VER = '2.0.0'
 AUTHOR = '锤无双'
-AUTHOR_URL = 'https://www.bilibili.com/video/BV1hTxx69EFY/'
+AUTHOR_URL = 'https://www.bilibili.com/video/BV17SWk6VEPZ/'
 TUTORIAL_URL = 'https://www.bilibili.com/video/BV17SWk6VEPZ/'
 QQ_GROUP = '170621740'
 

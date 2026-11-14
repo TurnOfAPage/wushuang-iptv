@@ -1,6 +1,6 @@
 # 无双IPTV
 
-> **作者：B站-锤无双** · **QQ群：170621740** · [📺 视频教程](https://www.bilibili.com/video/BV17SWk6VEPZ/) · [作者主页](https://www.bilibili.com/video/BV1hTxx69EFY/)
+> **作者：B站-锤无双** · **QQ群：170621740** · [📺 视频教程](https://www.bilibili.com/video/BV17SWk6VEPZ/) · [作者主页](https://www.bilibili.com/video/BV17SWk6VEPZ/)
 
 让家里机顶盒退役：抓取 / 验证自家 IPTV 组播直播源，一键生成 M3U 播放列表，全家电视、手机、平板都能看直播。
 Windows **单文件绿色版**，双击即用，无需安装任何驱动 / 运行库。
