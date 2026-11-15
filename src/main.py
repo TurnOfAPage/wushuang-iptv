@@ -27,12 +27,7 @@ import refupdate
 import verify
 import wizard
 
-APP_NAME = '无双IPTV抓源工具'
-APP_VER = '2.0.0'
-AUTHOR = '锤无双'
-AUTHOR_URL = 'https://www.bilibili.com/video/BV17SWk6VEPZ/'
-TUTORIAL_URL = 'https://www.bilibili.com/video/BV17SWk6VEPZ/'
-QQ_GROUP = '170621740'
+from appinfo import APP_NAME, APP_VER, AUTHOR, AUTHOR_URL, TUTORIAL_URL, QQ_GROUP
 
 # ---- 配色 ----
 BG = '#f2f5fa'
@@ -57,6 +52,15 @@ def app_dir():
 
 
 CFG_PATH = os.path.join(app_dir(), 'WushuangIPTV.json')
+
+# ---- 高 DPI 自适应（4K 屏字体过小修复，v2.1）----
+# SCALE=系统DPI/96（96DPI 时为 1.0，界面与旧版完全一致；4K+200% 缩放时为 2.0）。
+# 字体用「磅」指定，由 tk scaling 自动缩放；像素尺寸（行高/列宽/窗口等）用 px() 缩放。
+SCALE = 1.0
+
+
+def px(n):
+    return int(round(n * SCALE))
 
 DEFAULT_CFG = {
     'wizard': {'mode': 'fresh', 'pc_lan': 'yes', 'pc_wifi': 'yes', 'switch': 'dumb3',
@@ -174,11 +178,12 @@ class App:
     def __init__(self, root):
         self.root = root
         root.title('%s v%s' % (APP_NAME, APP_VER))
-        root.geometry('1180x820')
-        root.minsize(1040, 700)
+        root.geometry('%dx%d' % (px(1180), px(820)))
+        root.minsize(px(1040), px(700))
         root.configure(bg=BG)
         try:
-            root.tk.call('tk', 'scaling', 1.25)
+            # 1.25 为 96DPI 下的基准观感（与旧版一致），再乘系统 DPI 比例
+            root.tk.call('tk', 'scaling', 1.25 * SCALE)
         except tk.TclError:
             pass
         self.cfg = self._load_cfg()
@@ -249,22 +254,23 @@ class App:
         st.configure('TLabelframe', background=BG, foreground=ACCENT_DARK,
                      borderwidth=1, relief='solid', bordercolor='#dfe5ee')
         st.configure('TLabelframe.Label', background=BG, foreground=ACCENT_DARK, font=FONT_B)
-        st.configure('TNotebook', background=BG, borderwidth=0, tabmargins=(6, 6, 6, 0))
+        st.configure('TNotebook', background=BG, borderwidth=0,
+                     tabmargins=(px(6), px(6), px(6), 0))
         st.configure('TNotebook.Tab', background='#e6ebf2', foreground=SUB,
-                     padding=(18, 8), font=FONT_B, borderwidth=0)
+                     padding=(px(18), px(8)), font=FONT_B, borderwidth=0)
         st.map('TNotebook.Tab', background=[('selected', CARD)],
                foreground=[('selected', ACCENT)])
         st.configure('TButton', background='#e2e8f0', foreground=TEXT,
-                     padding=(10, 5), borderwidth=0, font=FONT)
+                     padding=(px(10), px(5)), borderwidth=0, font=FONT)
         st.map('TButton', background=[('active', '#cbd5e1'), ('disabled', '#eef1f6')],
                foreground=[('disabled', '#9aa4b2')])
         st.configure('Accent.TButton', background=ACCENT, foreground='white',
-                     font=FONT_B, padding=(12, 6))
+                     font=FONT_B, padding=(px(12), px(6)))
         st.map('Accent.TButton', background=[('active', ACCENT_DARK), ('disabled', '#94a3b8')])
         st.configure('Treeview', background=CARD, fieldbackground=CARD,
-                     rowheight=27, borderwidth=0, font=FONT_S)
+                     rowheight=px(27), borderwidth=0, font=FONT_S)
         st.configure('Treeview.Heading', background='#e8edf5', foreground=TEXT,
-                     font=FONT_B, padding=(4, 5), borderwidth=0)
+                     font=FONT_B, padding=(px(4), px(5)), borderwidth=0)
         st.map('Treeview', background=[('selected', '#dbeafe')],
                foreground=[('selected', TEXT)])
         st.map('Treeview.Heading', background=[('active', '#dde4f0')])
@@ -278,7 +284,7 @@ class App:
                      arrowcolor=ACCENT, borderwidth=1)
         st.configure('TEntry', fieldbackground=CARD, borderwidth=1)
         st.configure('Horizontal.TProgressbar', background=ACCENT,
-                     troughcolor='#e2e8f0', borderwidth=0, thickness=10)
+                     troughcolor='#e2e8f0', borderwidth=0, thickness=px(10))
         st.configure('TSeparator', background='#cbd5e1')
         st.configure('Hint.TLabel', foreground=SUB, background=BG, font=FONT_S)
         st.configure('Warn.TLabel', foreground=BADC, background=BG)
@@ -291,7 +297,7 @@ class App:
         self.header = tk.Frame(self.root, bg=CARD)
         self.header.pack(fill='x', side='top')
         # 底部品牌渐变分隔线（细，呼应强调色，不突兀）
-        self.divider = tk.Canvas(self.header, height=3, highlightthickness=0, bg=CARD)
+        self.divider = tk.Canvas(self.header, height=px(3), highlightthickness=0, bg=CARD)
         self.divider.pack(side='bottom', fill='x')
         self.divider.bind('<Configure>', lambda e: self._draw_divider())
         row = tk.Frame(self.header, bg=CARD)
@@ -303,6 +309,8 @@ class App:
         if os.path.exists(ico):
             try:
                 self._header_icon = tk.PhotoImage(file=ico)
+                if SCALE > 1.0:
+                    self._header_icon = self._header_icon.zoom(max(1, round(SCALE)))
                 tk.Label(row, image=self._header_icon, bg=CARD).pack(side='left', padx=(0, 14))
             except tk.TclError:
                 self._header_icon = None
@@ -427,7 +435,7 @@ class App:
                    command=self._gen_wiz_plan).pack(fill='x', padx=4, pady=8)
         right = ttk.Frame(pw)
         pw.add(right, weight=3)
-        self.wiz_msg = ttk.Label(right, text='', style='Warn.TLabel', wraplength=580, justify='left')
+        self.wiz_msg = ttk.Label(right, text='', style='Warn.TLabel', wraplength=px(580), justify='left')
         self.wiz_msg.pack(fill='x', padx=4, pady=(4, 2))
         mid = ttk.Frame(right)
         mid.pack(fill='both', expand=True, padx=4)
@@ -450,7 +458,7 @@ class App:
                                   bg='#fffef5', fg=TEXT, relief='solid', bd=1, highlightthickness=0)
         self.wiz_detail.pack(side='right', fill='both', padx=(6, 0))
         self.wiz_detail.configure(state='disabled')
-        self.wiz_canvas = tk.Canvas(right, height=250, bg='white', highlightthickness=1,
+        self.wiz_canvas = tk.Canvas(right, height=px(250), bg='white', highlightthickness=1,
                                     highlightbackground='#cbd5e1')
         self.wiz_canvas.pack(fill='x', padx=4, pady=4)
         self.wiz_plan = None
@@ -509,6 +517,12 @@ class App:
         self.wiz_detail.configure(state='disabled')
 
     def _draw_topology(self):
+        self._draw_topology_impl()
+        if SCALE != 1.0:
+            # 画布坐标按 DPI 缩放（字体为磅值已随 tk scaling 放大，线宽在绘制时已 px()）
+            self.wiz_canvas.scale('all', 0, 0, SCALE, SCALE)
+
+    def _draw_topology_impl(self):
         c = self.wiz_canvas
         c.delete('all')
         plan = self.wiz_plan or {}
@@ -519,13 +533,13 @@ class App:
         ont = plan.get('ont_label', '光猫 ITV 口')
 
         def box(x, y, w, h, title, sub='', fill='#eef4ff'):
-            c.create_rectangle(x, y, x + w, y + h, fill=fill, outline='#4a6fa5', width=2)
+            c.create_rectangle(x, y, x + w, y + h, fill=fill, outline='#4a6fa5', width=px(2))
             c.create_text(x + w / 2, y + 16, text=title, font=('Microsoft YaHei UI', 9, 'bold'))
             if sub:
                 c.create_text(x + w / 2, y + 36, text=sub, font=('Microsoft YaHei UI', 8), fill='#444')
 
         def line(x1, y1, x2, y2, color='#4a6fa5', dash=None, label='', lx=0, ly=0, width=2):
-            c.create_line(x1, y1, x2, y2, fill=color, width=width, dash=dash)
+            c.create_line(x1, y1, x2, y2, fill=color, width=px(width), dash=dash)
             if label:
                 c.create_text((x1 + x2) / 2 + lx, (y1 + y2) / 2 + ly, text=label,
                               font=('Microsoft YaHei UI', 8), fill=color)
@@ -590,7 +604,7 @@ class App:
         self.keep_pcap_var = tk.BooleanVar(value=self.cfg.get('keep_pcap', False))
         ttk.Checkbutton(r1, text='分析后保留 pcap', variable=self.keep_pcap_var).pack(side='left', padx=12)
         self.cap_state_lbl = ttk.Label(top, text='就绪。开始抓包后：机顶盒开机重启，或遥控器逐个换台（每频道停 3~5 秒）。',
-                                       style='Hint.TLabel', wraplength=1050, justify='left')
+                                       style='Hint.TLabel', wraplength=px(1050), justify='left')
         self.cap_state_lbl.pack(fill='x', padx=6, pady=(0, 4))
         self.cap_stb_lbl = ttk.Label(top, text='', style='Hint.TLabel')
         self.cap_stb_lbl.pack(fill='x', padx=6, pady=(0, 4))
@@ -612,7 +626,7 @@ class App:
         tree = ttk.Treeview(parent, columns=cols, show='headings', selectmode='extended')
         for col, head, w in zip(cols, heads, widths):
             tree.heading(col, text=head)
-            tree.column(col, width=w, anchor='w')
+            tree.column(col, width=px(w), anchor='w')
         vsb = ttk.Scrollbar(parent, orient='vertical', command=tree.yview)
         tree.configure(yscrollcommand=vsb.set)
         tree.pack(side='left', fill='both', expand=True)
@@ -804,7 +818,7 @@ class App:
         self.ver_prog = ttk.Progressbar(top, mode='determinate')
         self.ver_prog.pack(fill='x', padx=6, pady=(0, 2))
         self.ver_prog_lbl = ttk.Label(top, text='提示：验证=真实加入组播组收流。抓包搭线阶段用有线口(169.254.x 也可)；已桥接网络用有线口(192.168.x)。',
-                                      style='Hint.TLabel', wraplength=1050, justify='left')
+                                      style='Hint.TLabel', wraplength=px(1050), justify='left')
         self.ver_prog_lbl.pack(fill='x', padx=6, pady=(0, 4))
         cols = ('name', 'group', 'port', 'cat', 'status', 'video', 'audio', 'res', 'sdt', 'src')
         heads = ('频道名', '组播地址', '端口', '分类', '状态', '视频', '音频', '分辨率', 'SDT名', '来源')
@@ -1067,19 +1081,7 @@ class App:
         self.ver_thread.start()
 
     def _apply_ver_result(self, ch, r):
-        ch['ok'] = r['ok']
-        ch['tested'] = True
-        ch['video'] = r['video']
-        ch['audio'] = r['audio']
-        ch['res'] = r['res']
-        ch['sdt_name'] = r['sdt_name']
-        if r['ok'] and r['sdt_name'] and not ch.get('user_named'):
-            nm = channeldb.normalize_name(r['sdt_name'])
-            ref = channeldb.lookup(ch['group'], ch['port'])
-            if not ref:
-                ch['name'] = nm
-                if not ch.get('user_catted'):
-                    ch['cat'] = channeldb.guess_category(nm)
+        channeldb.apply_verify_result(ch, r)
         self._insert_channel_row(ch)
 
     # ================= M3U 页 =================
@@ -1319,11 +1321,11 @@ class App:
         self.prox_stop_btn = ttk.Button(r, text='■ 停止', command=self._prox_stop, state='disabled')
         self.prox_stop_btn.pack(side='left', padx=4)
         self.prox_state_lbl = ttk.Label(top, text='未运行。启动后首次会弹 Windows 防火墙提示，请点「允许(专用网络)」。',
-                                        style='Hint.TLabel', wraplength=1050, justify='left')
+                                        style='Hint.TLabel', wraplength=px(1050), justify='left')
         self.prox_state_lbl.pack(fill='x', padx=6, pady=(0, 6))
         uf = ttk.LabelFrame(self.tab_prox, text='播放地址（复制到 VLC / Kodi / DIYP / 电视盒子）')
         uf.pack(fill='x', padx=6, pady=6)
-        self.prox_url_lbl = ttk.Label(uf, text='', font=MONO, wraplength=1050, justify='left')
+        self.prox_url_lbl = ttk.Label(uf, text='', font=MONO, wraplength=px(1050), justify='left')
         self.prox_url_lbl.pack(fill='x', padx=8, pady=6)
         ttk.Button(uf, text='复制播放列表地址', command=self._prox_copy).pack(anchor='w', padx=8, pady=(0, 8))
         sf = ttk.LabelFrame(self.tab_prox, text='活跃流（每 2 秒刷新）')
@@ -1333,7 +1335,7 @@ class App:
         self.prox_status_txt.pack(fill='both', expand=True, padx=4, pady=4)
         ttk.Label(self.tab_prox, text='⚠ 仅限局域网使用，禁止把端口映射到公网。电脑需保持开机；'
                   '需要 7×24 小时服务请考虑 NAS/路由器方案。', style='Warn.TLabel',
-                  wraplength=1050, justify='left').pack(fill='x', padx=8, pady=(0, 8))
+                  wraplength=px(1050), justify='left').pack(fill='x', padx=8, pady=(0, 8))
 
     def _prox_urls(self):
         lan = netutil.lan_ip_for_udpxy(self.ifaces)
@@ -1604,15 +1606,24 @@ def _setup_window_icon(root):
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == 'cli':
+        # headless CLI（供 AI 工具/脚本调用）：不启动 GUI，JSON 结果输出
+        import cli
+        sys.exit(cli.main(sys.argv[2:]))
     if '--selftest' in sys.argv:
         import selftest
         selftest.main()
         return
+    global SCALE
     try:
         ctypes = __import__('ctypes')
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
         # 任务栏图标与窗口一致（否则 Windows 任务栏显示 python 默认图标）
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('Wushuang.IPTV.Tool.2')
+        # 按系统真实 DPI 缩放（Win10 1607+；失败则保持 1.0）
+        dpi = ctypes.windll.user32.GetDpiForSystem()
+        if dpi > 0:
+            SCALE = dpi / 96.0
     except Exception:
         pass
     root = tk.Tk()

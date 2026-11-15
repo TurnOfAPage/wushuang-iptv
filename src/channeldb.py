@@ -164,6 +164,25 @@ def guess_category(name, sdt_type=None):
     return '其他频道'
 
 
+def apply_verify_result(ch, r):
+    """把 verify.verify_channel 的结果写回频道 dict（GUI 与 CLI 共用同一套命名规则）。
+    实测成功且拿到 SDT 名时自动命名；参考库已有名字/用户改过的名字不覆盖。"""
+    ch['ok'] = r['ok']
+    ch['tested'] = True
+    ch['video'] = r['video']
+    ch['audio'] = r['audio']
+    ch['res'] = r['res']
+    ch['sdt_name'] = r['sdt_name']
+    if r['ok'] and r['sdt_name'] and not ch.get('user_named'):
+        nm = normalize_name(r['sdt_name'])
+        ref = lookup(ch['group'], ch['port'])
+        if not ref:
+            ch['name'] = nm
+            if not ch.get('user_catted'):
+                ch['cat'] = guess_category(nm)
+    return ch
+
+
 def guess_cat(name, genre):
     n = (name or '').upper()
     g = genre or ''

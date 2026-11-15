@@ -1,4 +1,4 @@
-# 无双IPTV · 公开构建脚本（在 src 目录运行）
+﻿# 无双IPTV · 公开构建脚本（在 src 目录运行）
 # 产物: ..\dist\无双IPTV抓源工具.exe (单文件 / 无控制台 / UAC 管理员)
 Set-Location $PSScriptRoot
 
