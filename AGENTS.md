@@ -4,12 +4,12 @@
 
 ## 方式一：直接用发布 exe（推荐，无需 Python）
 
-从 [Releases](../../releases) 下载 `无双IPTV-CLI.exe`（控制台版，不强制管理员），然后：
+从 [Releases](../../releases) 下载 `WushuangIPTV-CLI.exe`（控制台版，不强制管理员），然后：
 
 ```bash
-无双IPTV-CLI.exe info                                            # 第一步：环境总览（网卡/参考库/建议网卡）
-无双IPTV-CLI.exe verify --province 浙江 --carrier 电信 --out verified.json   # 载入参考库并真实加组验证
-无双IPTV-CLI.exe m3u --channels verified.json --outdir ./out     # 生成 udp + http 双版播放列表
+WushuangIPTV-CLI.exe info                                            # 第一步：环境总览（网卡/参考库/建议网卡）
+WushuangIPTV-CLI.exe verify --province 浙江 --carrier 电信 --out verified.json   # 载入参考库并真实加组验证
+WushuangIPTV-CLI.exe m3u --channels verified.json --outdir ./out     # 生成 udp + http 双版播放列表
 ```
 
 **输出协议**：stdout 只有一个 JSON 结果（`ok/tool/version/command/...`）；stderr 是 JSON Lines 进度；退出码 `0`成功 `1`失败 `2`参数错误 `3`需管理员；`--out FILE` 把结果写入文件。

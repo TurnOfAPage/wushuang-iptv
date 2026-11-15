@@ -20,7 +20,7 @@ Windows **单文件绿色版**，双击即用，无需安装任何驱动 / 运�
 - **生成 M3U**：`udp://` 组播直连 + `http://` udpxy 转发双格式，指定目录保存 / 合并 / 自动更新。
 - **一键推送 NAS**：SMB 共享 / WebDAV，抓完自动同步播放列表到 NAS，配合 Tvheadend/udpxy 实现 7×24 转发。
 - **转发服务**：内置 udpxy 等价服务，组播转 HTTP 单播，WiFi 设备播放更稳。
-- **CLI 命令行模式（v2.1）**：`无双IPTV-CLI.exe` 无界面跑通全流程，JSON 输出 + 退出码，**可被 AI 工具（Claude Code / DSH / Cursor 等）直接调用**；仅抓包需要管理员。
+- **CLI 命令行模式（v2.1）**：`WushuangIPTV-CLI.exe` 无界面跑通全流程，JSON 输出 + 退出码，**可被 AI 工具（Claude Code / DSH / Cursor 等）直接调用**；仅抓包需要管理员。
 - **4K 高 DPI 自适应（v2.1）**：按系统真实 DPI 缩放字体与界面，高分屏不再字小；1080p 下观感不变。
 
 ## 📷 截图
@@ -44,12 +44,12 @@ Windows **单文件绿色版**，双击即用，无需安装任何驱动 / 运�
 
 ## 🤖 AI 工具 / 命令行调用（v2.1）
 
-下载 Releases 里的 `无双IPTV-CLI.exe`（控制台版，不强制管理员），AI 工具或脚本即可直接操作：
+下载 Releases 里的 `WushuangIPTV-CLI.exe`（控制台版，不强制管理员），AI 工具或脚本即可直接操作：
 
 ```bash
-无双IPTV-CLI.exe info                                          # 环境总览（网卡/参考库/建议网卡）
-无双IPTV-CLI.exe verify --province 浙江 --carrier 电信 --out verified.json  # 载入参考库并实测验证
-无双IPTV-CLI.exe m3u --channels verified.json --outdir D:\iptv            # 生成 udp+http 双版 M3U
+WushuangIPTV-CLI.exe info                                          # 环境总览（网卡/参考库/建议网卡）
+WushuangIPTV-CLI.exe verify --province 浙江 --carrier 电信 --out verified.json  # 载入参考库并实测验证
+WushuangIPTV-CLI.exe m3u --channels verified.json --outdir D:\iptv            # 生成 udp+http 双版 M3U
 ```
 
 - stdout 单个 JSON 结果、stderr JSONL 进度、退出码 0成功/1失败/2参数错误/3需管理员；
@@ -75,7 +75,7 @@ Windows **单文件绿色版**，双击即用，无需安装任何驱动 / 运�
 cd src
 pip install pyinstaller pillow
 .\build.ps1        # GUI 版，产物在 ..\dist\无双IPTV抓源工具.exe
-.\build_cli.ps1    # CLI 版（v2.1），产物在 ..\dist\无双IPTV-CLI.exe
+.\build_cli.ps1    # CLI 版（v2.1），产物在 ..\dist\WushuangIPTV-CLI.exe
 ```
 
 - 默认**不内嵌**全国参考库（见下），首次运行点「在线更新参考库」即可拉取。

@@ -8,11 +8,11 @@
 
 | 方式 | 命令形式 | 说明 |
 |---|---|---|
-| **CLI 版（推荐）** | `无双IPTV-CLI.exe <子命令> [参数]` | 控制台程序，stdout 直接输出 JSON；**不强制管理员**（仅 capture 需要） |
+| **CLI 版（推荐）** | `WushuangIPTV-CLI.exe <子命令> [参数]` | 控制台程序，stdout 直接输出 JSON；**不强制管理员**（仅 capture 需要） |
 | GUI 版兼容入口 | `无双IPTV抓源工具.exe cli <子命令> [参数]` | 无控制台，stdout 不可用，**必须用 `--out 文件` 取结果**（缺省写入当前目录 `cli-result.json`）；启动会弹 UAC |
 | 源码方式 | `python src\main.py cli <子命令> [参数]` | 需要 Python 3.10+，无第三方依赖 |
 
-AI 工具（Claude Code / DSH / Cursor / Manus 等）拿到 `无双IPTV-CLI.exe` 后即可直接命令行操作全流程，无需点击 GUI。
+AI 工具（Claude Code / DSH / Cursor / Manus 等）拿到 `WushuangIPTV-CLI.exe` 后即可直接命令行操作全流程，无需点击 GUI。
 
 ## 二、输出协议（对 AI 友好）
 
@@ -30,34 +30,34 @@ AI 工具（Claude Code / DSH / Cursor / Manus 等）拿到 `无双IPTV-CLI.exe`
 
 ### info — 环境总览（AI 建议的第一步）
 ```
-无双IPTV-CLI.exe info
+WushuangIPTV-CLI.exe info
 ```
 返回：是否管理员、pktmon 路径、网卡列表（名称/IP/有线无线）、**建议的组播网卡** `suggested_multicast_iface`、**建议的 udpxy 主机** `suggested_udpxy_host`、参考库概况。
 
 ### ifaces — 网卡列表
 ```
-无双IPTV-CLI.exe ifaces
+WushuangIPTV-CLI.exe ifaces
 ```
 
 ### refdb — 全国参考库（31省 × 电信/联通/移动/广电）
 ```
-无双IPTV-CLI.exe refdb info                          # 库概况 + 省份列表
-无双IPTV-CLI.exe refdb carriers --province 浙江       # 该省运营商与频道数
-无双IPTV-CLI.exe refdb update                        # 在线更新（仅此时联网）
-无双IPTV-CLI.exe refdb import --file refdb.json      # 离线导入
+WushuangIPTV-CLI.exe refdb info                          # 库概况 + 省份列表
+WushuangIPTV-CLI.exe refdb carriers --province 浙江       # 该省运营商与频道数
+WushuangIPTV-CLI.exe refdb update                        # 在线更新（仅此时联网）
+WushuangIPTV-CLI.exe refdb import --file refdb.json      # 离线导入
 ```
 
 ### load — 载入某省某运营商频道（候选，未实测）
 ```
-无双IPTV-CLI.exe load --province 浙江 --carrier 电信 --out channels.json
+WushuangIPTV-CLI.exe load --province 浙江 --carrier 电信 --out channels.json
 ```
 省份/运营商支持中文或拼音（`zhejiang` / `telecom`）。运营商：电信/联通/移动/广电。
 
 ### verify — 真实加组收流验证（核心功能，不需管理员）
 ```
-无双IPTV-CLI.exe verify --channels channels.json --out verified.json
-无双IPTV-CLI.exe verify --province 浙江 --carrier 电信 --out verified.json   # 载入+验证一步完成
-无双IPTV-CLI.exe verify --group 233.50.201.118 --port 5140                  # 只验证单个频道
+WushuangIPTV-CLI.exe verify --channels channels.json --out verified.json
+WushuangIPTV-CLI.exe verify --province 浙江 --carrier 电信 --out verified.json   # 载入+验证一步完成
+WushuangIPTV-CLI.exe verify --group 233.50.201.118 --port 5140                  # 只验证单个频道
 ```
 | 参数 | 默认 | 说明 |
 |---|---|---|
@@ -70,19 +70,19 @@ AI 工具（Claude Code / DSH / Cursor / Manus 等）拿到 `无双IPTV-CLI.exe`
 
 ### capture — pktmon 抓包并分析（需管理员）
 ```
-无双IPTV-CLI.exe capture --seconds 90 --out channels.json
+WushuangIPTV-CLI.exe capture --seconds 90 --out channels.json
 ```
 非管理员运行返回退出码 3 + JSON 错误提示。抓包期间请让机顶盒开机并逐个换台（每频道停 3~5 秒）。`--keep-pcap` 保留抓包文件；`--workdir` 指定临时目录。结果含频道候选 + 流统计 + 机顶盒信息（**含账号，分享前脱敏**）。
 
 ### analyze — 分析已有抓包文件（不需管理员）
 ```
-无双IPTV-CLI.exe analyze --pcap cap.pcap --out channels.json
+WushuangIPTV-CLI.exe analyze --pcap cap.pcap --out channels.json
 ```
 支持 pcap / pcapng / etl（pktmon 产物）。
 
 ### m3u — 生成/更新播放列表
 ```
-无双IPTV-CLI.exe m3u --channels verified.json --outdir D:\iptv
+WushuangIPTV-CLI.exe m3u --channels verified.json --outdir D:\iptv
 ```
 默认生成 `iptv.m3u`（udp 组播直连）+ `iptv-http.m3u`（udpxy 转发配对版），只导出验证可用频道，自动与目录中已有文件合并。
 | 参数 | 默认 | 说明 |
@@ -97,7 +97,7 @@ AI 工具（Claude Code / DSH / Cursor / Manus 等）拿到 `无双IPTV-CLI.exe`
 
 ### proxy — 组播→HTTP 转发服务（前台长驻，udpxy 等价）
 ```
-无双IPTV-CLI.exe proxy --port 9999 --channels verified.json
+WushuangIPTV-CLI.exe proxy --port 9999 --channels verified.json
 ```
 启动即输出含 URL 的 JSON，然后前台持续运行（AI 工具请放后台任务），Ctrl+C 停止。
 端点：`/status` 状态 · `/playlist.m3u` HTTP 版列表 · `/raw.m3u` udp 版列表 · `/udp/<组>:<端口>` 单频道转发。
@@ -105,30 +105,30 @@ AI 工具（Claude Code / DSH / Cursor / Manus 等）拿到 `无双IPTV-CLI.exe`
 
 ### push — 推送播放列表到 NAS
 ```
-无双IPTV-CLI.exe push --files iptv.m3u iptv-http.m3u --method smb --target \\192.168.1.84\共享\iptv
-无双IPTV-CLI.exe push --files iptv.m3u --method webdav --target http://192.168.1.84:5005/iptv --user u --password p
+WushuangIPTV-CLI.exe push --files iptv.m3u iptv-http.m3u --method smb --target \\192.168.1.84\共享\iptv
+WushuangIPTV-CLI.exe push --files iptv.m3u --method webdav --target http://192.168.1.84:5005/iptv --user u --password p
 ```
 
 ## 四、AI 工具典型工作流
 
 **场景 B（已桥接，机顶盒退役）——全自动，无需管理员：**
 ```
-无双IPTV-CLI.exe info
-无双IPTV-CLI.exe verify --province 浙江 --carrier 电信 --out verified.json
-无双IPTV-CLI.exe m3u --channels verified.json --outdir D:\iptv
-无双IPTV-CLI.exe push --files D:\iptv\iptv.m3u D:\iptv\iptv-http.m3u --method webdav --target http://NAS:5005/iptv
+WushuangIPTV-CLI.exe info
+WushuangIPTV-CLI.exe verify --province 浙江 --carrier 电信 --out verified.json
+WushuangIPTV-CLI.exe m3u --channels verified.json --outdir D:\iptv
+WushuangIPTV-CLI.exe push --files D:\iptv\iptv.m3u D:\iptv\iptv-http.m3u --method webdav --target http://NAS:5005/iptv
 ```
 
 **场景 A（首次抓源）——capture 一步需管理员终端：**
 ```
-无双IPTV-CLI.exe capture --seconds 90 --out channels.json     # 管理员终端；期间机顶盒换台
-无双IPTV-CLI.exe verify --channels channels.json --out verified.json
-无双IPTV-CLI.exe m3u --channels verified.json --outdir D:\iptv
+WushuangIPTV-CLI.exe capture --seconds 90 --out channels.json     # 管理员终端；期间机顶盒换台
+WushuangIPTV-CLI.exe verify --channels channels.json --out verified.json
+WushuangIPTV-CLI.exe m3u --channels verified.json --outdir D:\iptv
 ```
 
 **7×24 转发（本机或 NAS 已有 udpxy/Tvheadend 则跳过 proxy）：**
 ```
-无双IPTV-CLI.exe proxy --port 9999 --channels verified.json   # 后台运行
+WushuangIPTV-CLI.exe proxy --port 9999 --channels verified.json   # 后台运行
 ```
 
 ## 五、注意事项

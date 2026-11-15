@@ -4,7 +4,7 @@
 
 ### 🆕 CLI 命令行模式 —— 可被 AI 工具直接调用
 
-- 新增 **`无双IPTV-CLI.exe`**（控制台版，**不强制管理员**）与 `src/cli.py`、`src/cli_entry.py`。
+- 新增 **`WushuangIPTV-CLI.exe`**（控制台版，**不强制管理员**）与 `src/cli.py`、`src/cli_entry.py`。
 - 10 个子命令覆盖全流程：`info / ifaces / refdb / load / verify / capture / analyze / m3u / proxy / push`。
 - **AI 友好输出协议**：stdout 只输出一个 JSON 结果文档；stderr 输出 JSON Lines 进度；退出码 `0`成功 / `1`失败 / `2`参数错误 / `3`需管理员；`--out` 原子写入结果文件。
 - 频道 JSON 贯穿 `load → verify → m3u → proxy/push` 全链路（也兼容 `.m3u` 输入）；省份/运营商支持中文或拼音。
