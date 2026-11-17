@@ -8,9 +8,10 @@
 
 | 方式 | 命令形式 | 说明 |
 |---|---|---|
-| **CLI 版（推荐）** | `WushuangIPTV-CLI.exe <子命令> [参数]` | 控制台程序，stdout 直接输出 JSON；**不强制管理员**（仅 capture 需要） |
+| **CLI 版（推荐）** | `WushuangIPTV-CLI.exe <子命令> [参数]` | Windows 控制台程序，stdout 直接输出 JSON；**不强制管理员**（仅 capture 需要） |
+| **CLI 版（Linux/macOS）** | `./WushuangIPTV-CLI <子命令> [参数]` | 参数与 Windows 完全一致；仅 capture 需要 sudo |
 | GUI 版兼容入口 | `无双IPTV抓源工具.exe cli <子命令> [参数]` | 无控制台，stdout 不可用，**必须用 `--out 文件` 取结果**（缺省写入当前目录 `cli-result.json`）；启动会弹 UAC |
-| 源码方式 | `python src\main.py cli <子命令> [参数]` | 需要 Python 3.10+，无第三方依赖 |
+| 源码方式 | `python src\main.py cli <子命令> [参数]` | 需要 Python 3.10+，无第三方依赖；Linux/macOS 用 `python3 src/main.py` |
 
 AI 工具（Claude Code / DSH / Cursor / Manus 等）拿到 `WushuangIPTV-CLI.exe` 后即可直接命令行操作全流程，无需点击 GUI。
 
@@ -32,7 +33,7 @@ AI 工具（Claude Code / DSH / Cursor / Manus 等）拿到 `WushuangIPTV-CLI.ex
 ```
 WushuangIPTV-CLI.exe info
 ```
-返回：是否管理员、pktmon 路径、网卡列表（名称/IP/有线无线）、**建议的组播网卡** `suggested_multicast_iface`、**建议的 udpxy 主机** `suggested_udpxy_host`、参考库概况。
+返回：是否管理员/root、`platform`（win32/linux/darwin）、`capture_backend`（pktmon/tcpdump）及路径、网卡列表（名称/IP/有线无线）、**建议的组播网卡** `suggested_multicast_iface`、**建议的 udpxy 主机** `suggested_udpxy_host`、参考库概况。
 
 ### ifaces — 网卡列表
 ```
@@ -68,17 +69,19 @@ WushuangIPTV-CLI.exe verify --group 233.50.201.118 --port 5140                  
 
 结果含每频道 `ok/video/audio/res/sdt_name`，实测成功自动规范化命名（CCTV-1 HD → CCTV1）。
 
-### capture — pktmon 抓包并分析（需管理员）
+### capture — 抓包并分析（Windows 需管理员，Linux/macOS 需 sudo）
 ```
 WushuangIPTV-CLI.exe capture --seconds 90 --out channels.json
+sudo ./WushuangIPTV-CLI capture --seconds 90 --iface eth0 --out channels.json   # Linux/macOS
 ```
-非管理员运行返回退出码 3 + JSON 错误提示。抓包期间请让机顶盒开机并逐个换台（每频道停 3~5 秒）。`--keep-pcap` 保留抓包文件；`--workdir` 指定临时目录。结果含频道候选 + 流统计 + 机顶盒信息（**含账号，分享前脱敏**）。
+后端：Windows 内置 pktmon；Linux/macOS 用 tcpdump（Linux 需 `sudo apt install tcpdump`，macOS 自带；Linux 缺省抓全部网卡，macOS 缺省选建议有线口，`--iface 设备名或IP` 可指定）。
+非管理员/root 运行返回退出码 3 + JSON 错误提示。抓包期间请让机顶盒开机并逐个换台（每频道停 3~5 秒）。`--keep-pcap` 保留抓包文件；`--workdir` 指定临时目录。结果含频道候选 + 流统计 + 机顶盒信息（**含账号，分享前脱敏**）。
 
 ### analyze — 分析已有抓包文件（不需管理员）
 ```
 WushuangIPTV-CLI.exe analyze --pcap cap.pcap --out channels.json
 ```
-支持 pcap / pcapng / etl（pktmon 产物）。
+支持 pcap / pcapng / etl（etl 仅 Windows pktmon 产物）。
 
 ### m3u — 生成/更新播放列表
 ```
@@ -107,6 +110,9 @@ WushuangIPTV-CLI.exe proxy --port 9999 --channels verified.json
 ```
 WushuangIPTV-CLI.exe push --files iptv.m3u iptv-http.m3u --method smb --target \\192.168.1.84\共享\iptv
 WushuangIPTV-CLI.exe push --files iptv.m3u --method webdav --target http://192.168.1.84:5005/iptv --user u --password p
+# Linux/macOS：已挂载目录，或 smb:// URL（需系统 smbclient）
+./WushuangIPTV-CLI push --files iptv.m3u --method smb --target /mnt/nas/iptv
+./WushuangIPTV-CLI push --files iptv.m3u --method smb --target smb://192.168.1.84/共享/iptv --user u --password p
 ```
 
 ## 四、AI 工具典型工作流
@@ -133,8 +139,9 @@ WushuangIPTV-CLI.exe proxy --port 9999 --channels verified.json   # 后台运行
 
 ## 五、注意事项
 
-- **首次运行可能弹出 Windows 防火墙提示，请点「允许访问」**（验证频道/转发服务需要接收组播流；点了「取消」会生成阻止规则，需在「Windows Defender 防火墙 → 允许应用通过防火墙」中改为允许）。
-- 验证/生成 M3U/参考库操作**不需要管理员**；只有 `capture`（pktmon）需要。
+- **首次运行可能弹出 Windows 防火墙提示，请点「允许访问」**（验证频道/转发服务需要接收组播流；点了「取消」会生成阻止规则，需在「Windows Defender 防火墙 → 允许应用通过防火墙」中改为允许）；macOS 应用防火墙弹窗同理点「允许」。
+- 验证/生成 M3U/参考库操作**不需要管理员/root**；只有 `capture`（pktmon/tcpdump）需要。
+- Linux/macOS 平台差异（安装依赖、网卡命名、WSL 注意事项等）见《跨平台说明.md》。
 - 参考库只是候选，各地运营商随时可能调整组播地址，**一切以本机 verify 实测为准**。
 - 软件不后台联网、不上传数据；仅 `refdb update` 主动联网下载公开频道列表。
 - `capture/analyze` 结果中的 `stb` 字段含机顶盒账号，仅本机使用，分享前请脱敏。

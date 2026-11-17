@@ -1,5 +1,45 @@
 # 更新说明
 
+## v2.1.0-beta · Linux/macOS 移植测试版（2026-11-17）
+
+> **版本口径**：Windows 版保持 **v2.1.0** 不变（本次无 Windows 功能改动）；
+> Linux/macOS 为 **v2.1 测试版**，**未做真机测试，仅供参考**（Linux 已在 WSL Ubuntu 22.04 完成功能验证，macOS 仅代码路径与 CI 覆盖）。
+
+### 🆕 跨平台：Linux / macOS 原生支持（CLI + GUI，测试版）
+
+- **同一套核心代码跑三个平台**：组播验证 / TS 解析 / M3U / HTTP 转发 / 参考库 / NAS 推送全平台共用；Windows 版行为完全不变。
+- 新增平台适配层 `netutil.py`：管理员/root 检测、网卡枚举（Windows ipconfig / Linux ip·ifconfig / macOS ifconfig·networksetup）、抓包后端探测。
+- 抓包双引擎：Windows 保持内置 **pktmon**；Linux/macOS 新增 **tcpdump** 引擎（`capture.get_engine` 平台工厂），支持 `-i any` 的 LINUX_SLL/SLL2 链路类型解析；`capture` 新增 `--iface` 参数。
+- GUI 跨平台：字体按系统自动选择与回退（雅黑/苹方/Noto Sans CJK）、Windows DPI 逻辑仅 Win 生效、POSIX 窗口图标、无头 Linux 上 CLI/selftest 不依赖 tkinter。
+- NAS 推送：Linux/macOS 支持已挂载目录与 `smb://` URL（系统 smbclient）；WebDAV 不变。
+- CLI 协议向后兼容：`info` 新增 `platform` / `capture_backend` / `capture_backend_path` 字段，原字段保留；退出码语义不变（3=需管理员/root）；POSIX 上 `version` 显示 `2.1.0-beta` 并附 `beta_note` 测试版声明。
+- 构建：新增 `src/build_cli.sh` / `src/build.sh`（PyInstaller 单文件）与 GitHub Actions 四平台矩阵（linux-x64 / macos-x64 / macos-arm64 / windows-x64）。
+- 文档：新增 [跨平台说明.md](跨平台说明.md)；AGENTS.md / CLI使用说明.md 同步更新。
+
+### ✅ 验证
+
+- 自测扩充到 **48/48**（新增平台层 7 项 + SLL/SLL2 解析 4 项），Windows 与 WSL Ubuntu 22.04 双平台全绿。
+- Linux 回环端到端（`src/e2e_posix.py`）：真实加组收流 → h264/mp2/SDT 命名/1080p → HTTP 转发 200KB → M3U，全部通过。
+- Linux root 下 tcpdump 真实抓包（SLL2）发现组播流；CLI 全链路（非 root 拦截退出码 3 → capture → verify → m3u）通过。
+- WSL 内 PyInstaller 打包 CLI/GUI 二进制并运行通过；GUI 冒烟（WSLg）通过。
+- macOS 与 Linux 共用 POSIX 分支，CI 构建 + selftest 覆盖；真实 IPTV 收流待 Mac 实测。
+
+### 🆕 鸿蒙PC 精简版（HarmonyOS NEXT，测试版）
+
+- 新增 `harmony/` ArkTS 工程（DevEco Studio 6 / API 22，设备类型 2in1/phone/tablet）：
+  全国参考库载入、`MulticastSocket` 组播加组验证（TS 解析/自动命名与 Python 版同一套逻辑）、
+  M3U 生成导出、`TCPSocketServer` HTTP 转发（udpxy 等价）。
+- hvigor 命令行构建通过，产物 `entry-default-unsigned.hap`；**未签名、未真机测试，仅供参考**。
+- 系统限制：鸿蒙第三方应用无原始抓包权限，精简版不含抓包发现频道。
+- 运行：DevEco Studio 打开工程 → 登录华为账号自动签名 → 模拟器/真机；详见 [harmony/README.md](harmony/README.md)。
+
+### ⚠️ 注意
+
+- **Linux/macOS 为测试版：未做真机测试，仅供参考**。真实 IPTV 环境验证前请勿用于生产。
+- Linux/macOS 抓包需 **sudo**（verify/m3u/proxy 等不需要）；Linux 抓包需安装 tcpdump，GUI 需 python3-tk。
+- macOS 未签名产物首次打开需右键→打开；正式分发建议签名+公证。
+- 鸿蒙PC（HarmonyOS NEXT）不运行 Python/ELF，且第三方应用无抓包权限——精简版（验证+M3U+转发）待真机技术验证后另行立项。
+
 ## v2.1.0（2026-11-15）
 
 ### 🆕 CLI 命令行模式 —— 可被 AI 工具直接调用

@@ -6,6 +6,10 @@
 Windows **单文件绿色版**，双击即用，无需安装任何驱动 / 运行库。
 **v2.1 新增 CLI 命令行模式**（可被 AI 工具直接调用）与 **4K 高 DPI 字体自适应**，详见 [更新说明](CHANGELOG.md)。
 
+> ### 🧪 跨平台测试版（v2.1.0-beta）
+> **Linux / macOS / 鸿蒙PC 版均为测试版：未做真机测试，仅供参考。**
+> Windows 版保持 v2.1.0 正式版不变。详见 [跨平台说明](docs/跨平台说明.md) 与 [鸿蒙版说明](harmony/README.md)。
+
 ![接线向导](screenshots/1_接线向导.png)
 
 ## ✨ 功能
@@ -58,6 +62,55 @@ WushuangIPTV-CLI.exe m3u --channels verified.json --outdir D:\iptv            # 
 
 完整命令参考：[docs/CLI使用说明.md](docs/CLI使用说明.md) · AI 工具入口：[AGENTS.md](AGENTS.md)
 
+## 💻 跨平台版本（Linux / macOS / 鸿蒙PC）
+
+> ⚠️ **三个新平台均为 v2.1 测试版：未做真机测试，仅供参考。** 真实 IPTV 环境验证前请勿用于生产。
+> Linux 已在 WSL（Ubuntu 22.04）完成功能验证（自测 48 项 + 组播回环端到端 + 真实 tcpdump 抓包 + 打包运行）；
+> macOS 与 Linux 共用 POSIX 代码路径，由 CI 构建覆盖；鸿蒙版已构建出 HAP，待签名与真机验证。
+
+| 平台 | 版本 | 抓包 | 验证/M3U/转发 | 获取方式 |
+|---|---|---|---|---|
+| Windows 10 1809+ / 11 | **v2.1.0 正式** | ✅ pktmon（管理员） | ✅ | [Releases](../../releases) exe |
+| Linux x64 | v2.1.0-beta | ✅ tcpdump（sudo） | ✅ | CI 产物 / 源码 / `build_cli.sh` |
+| macOS Intel / Apple Silicon | v2.1.0-beta | ✅ tcpdump（sudo，系统自带） | ✅ | CI 产物 / 源码 / `build_cli.sh` |
+| 鸿蒙PC（HarmonyOS NEXT，2in1） | v2.1.0-beta | ❌ 系统无第三方抓包权限 | ✅ 精简版 | DevEco 打开 `harmony/` 签名运行 |
+
+### Linux / macOS 快速开始
+
+```bash
+# 源码方式（Python 3.10+，核心零第三方依赖）
+sudo apt install python3 python3-tk tcpdump        # Linux；macOS 自带 tcpdump，Python 用 python.org 版
+python3 src/main.py cli info                       # 环境总览
+python3 src/main.py cli verify --province 浙江 --carrier 电信 --out verified.json
+python3 src/main.py cli m3u --channels verified.json --outdir ./out
+python3 src/main.py                                # 图形界面（tkinter）
+sudo ./WushuangIPTV-CLI capture --seconds 90       # 二进制版抓包需 sudo，其余命令免 root
+
+# 构建单文件二进制（PyInstaller，不能跨平台交叉编译）
+pip install pyinstaller
+bash src/build_cli.sh && bash src/build.sh         # 产物在 dist/
+```
+
+- CLI 协议与 Windows 完全一致（JSON 输出/退出码），`version` 显示 `2.1.0-beta` 并附 `beta_note` 声明；
+- NAS 推送：挂载目录或 `smb://` URL（smbclient）；WebDAV 不变；
+- macOS 未签名产物首次打开需**右键 → 打开**；WSL2 默认 NAT 收不到物理局域网组播（需镜像网络模式或真机）；
+- 完整差异与注意事项：**[docs/跨平台说明.md](docs/跨平台说明.md)**。
+
+### 鸿蒙PC 精简版（harmony/）
+
+- ArkTS/ArkUI 原生工程（DevEco Studio 6 / API 22）：参考库载入（**应用内在线更新**）、
+  `MulticastSocket` 组播实测验证、M3U 生成导出、`TCPSocketServer` HTTP 转发；
+- **不含抓包**（鸿蒙第三方应用无原始抓包权限，系统限制）；
+- 运行：DevEco Studio 打开 `harmony/` → 登录华为账号自动签名 → 模拟器/真机；
+  命令行构建 `harmony/build_hap.bat`（产物未签名）；
+- 模拟器只能验证 UI/参考库/M3U，**真实收流需鸿蒙PC真机 + 有线接入 IPTV 网络**；
+- 完整说明：**[harmony/README.md](harmony/README.md)**。
+
+### CI 自动构建
+
+推送 `v*` 标签或手动触发 [GitHub Actions](.github/workflows/build.yml)：
+linux-x64 / macos-x64 / macos-arm64 / windows-x64 四平台自测 + 构建，产物在 Actions Artifacts。
+
 ## 📱 配套 APK
 
 | 文件 | 说明 |
@@ -74,13 +127,19 @@ WushuangIPTV-CLI.exe m3u --channels verified.json --outdir D:\iptv            # 
 ```powershell
 cd src
 pip install pyinstaller pillow
-.\build.ps1        # GUI 版，产物在 ..\dist\无双IPTV抓源工具.exe
-.\build_cli.ps1    # CLI 版（v2.1），产物在 ..\dist\WushuangIPTV-CLI.exe
+.\build.ps1        # Windows GUI 版，产物在 ..\dist\无双IPTV抓源工具.exe
+.\build_cli.ps1    # Windows CLI 版（v2.1），产物在 ..\dist\WushuangIPTV-CLI.exe
+```
+
+```bash
+# Linux / macOS（测试版）
+bash src/build_cli.sh   # CLI，产物 dist/WushuangIPTV-CLI
+bash src/build.sh       # GUI，产物 dist/WushuangIPTV-GUI（macOS 为 .app）
 ```
 
 - 默认**不内嵌**全国参考库（见下），首次运行点「在线更新参考库」即可拉取。
-- 如需内嵌：先 `python fetch_national.py` 抓取社区数据到 `ref/national`，再 `python build_refdb.py`，然后 `build.ps1` 会自动打包 `refdb.json.gz`。
-- 自测：`python selftest.py`（合成数据，无需真实网络）。
+- 如需内嵌：先 `python fetch_national.py` 抓取社区数据到 `ref/national`，再 `python build_refdb.py`，然后构建脚本会自动打包 `refdb.json.gz`（CI 用 `python src/ci_refdb.py` 一步完成）。
+- 自测：`python selftest.py`（48 项，合成数据，无需真实网络）；Linux/macOS 另有 `python3 e2e_posix.py` 回环端到端冒烟。
 
 ## 📚 参考库数据说明
 
@@ -98,7 +157,7 @@ pip install pyinstaller pillow
 
 ## 📝 更新历史
 
-见 [CHANGELOG.md](CHANGELOG.md)（当前 v2.1.0：CLI 命令行模式 + 4K 高 DPI 修复）。
+见 [CHANGELOG.md](CHANGELOG.md)（Windows v2.1.0：CLI 命令行模式 + 4K 高 DPI 修复；Linux/macOS/鸿蒙 v2.1.0-beta 测试版：跨平台移植，未做真机测试，仅供参考）。
 
 ## 📄 License
 

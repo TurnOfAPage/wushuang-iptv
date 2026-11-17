@@ -10,7 +10,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import tempfile
 import threading
 import time
@@ -18,6 +17,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 import channeldb
+import netutil
 
 REPO = 'xisohi/CHINA-IPTV'
 BRANCH = 'main'
@@ -28,7 +28,6 @@ MIRRORS = [
     'https://ghfast.top/https://raw.githubusercontent.com/',
     'https://raw.githubusercontent.com/',
 ]
-CREATE_NO_WINDOW = 0x08000000
 
 
 def _get(url, timeout=20):
@@ -117,13 +116,11 @@ def fetch_online(progress_cb=None, stop_event=None):
             tmp = tempfile.mkdtemp(prefix='iptv_refdb_')
             try:
                 env = dict(os.environ, GIT_TERMINAL_PROMPT='0')
-                subprocess.run([git, 'clone', '--depth', '1', '--filter=blob:none', '--sparse',
-                                'https://github.com/%s.git' % REPO, tmp],
-                               capture_output=True, timeout=300, env=env,
-                               creationflags=CREATE_NO_WINDOW)
-                subprocess.run([git, 'sparse-checkout', 'set', 'Multicast'],
-                               cwd=tmp, capture_output=True, timeout=300, env=env,
-                               creationflags=CREATE_NO_WINDOW)
+                netutil.run_hidden([git, 'clone', '--depth', '1', '--filter=blob:none', '--sparse',
+                                    'https://github.com/%s.git' % REPO, tmp],
+                                   timeout=300, env=env)
+                netutil.run_hidden([git, 'sparse-checkout', 'set', 'Multicast'],
+                                   timeout=300, env=env, cwd=tmp)
                 for path in files:
                     if path in texts:
                         continue

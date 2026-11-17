@@ -1,0 +1,49 @@
+name: build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            artifact: linux-x64
+          - os: macos-13
+            artifact: macos-x64
+          - os: macos-latest
+            artifact: macos-arm64
+          - os: windows-latest
+            artifact: windows-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pip pyinstaller
+      - name: Tk check
+        run: python -c "import tkinter; print('tkinter OK')"
+      - name: Prepare refdb (community data, not bundled in repo)
+        run: python src/ci_refdb.py
+      - name: Selftest
+        run: python src/main.py --selftest
+      - name: Build CLI + GUI (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          bash src/build_cli.sh
+          bash src/build.sh
+      - name: Build CLI (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: src/build_cli.ps1
+      # Windows GUI 版需 ..\ref\national 社区数据，由维护者本地构建（src/build.ps1）
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WushuangIPTV-${{ matrix.artifact }}
+          path: dist/

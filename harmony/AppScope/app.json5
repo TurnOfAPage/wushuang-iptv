@@ -1,0 +1,10 @@
+{
+  "app": {
+    "bundleName": "com.wushuang.iptv",
+    "vendor": "wushuang",
+    "versionCode": 2010000,
+    "versionName": "2.1.0",
+    "icon": "$media:app_icon",
+    "label": "$string:app_name"
+  }
+}

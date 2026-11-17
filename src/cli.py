@@ -2,9 +2,10 @@
 """无双IPTV抓源工具 · headless CLI（供 AI 工具 / 脚本命令行调用，v2.1 新增）
 
 调用方式：
-  无双IPTV-CLI.exe <子命令> [参数]          （控制台版，推荐 AI 工具使用）
+  WushuangIPTV-CLI.exe <子命令> [参数]          （Windows 控制台版，推荐 AI 工具使用）
+  ./WushuangIPTV-CLI <子命令> [参数]            （Linux/macOS 控制台版）
   无双IPTV抓源工具.exe cli <子命令> [参数]   （GUI 版兼容入口，无控制台，须用 --out 取结果）
-  python main.py cli <子命令> [参数]        （源码方式）
+  python main.py cli <子命令> [参数]        （源码方式，全平台）
 
 输出协议（对 AI 友好）：
   · stdout 只输出一个 JSON 结果文档（UTF-8）；
@@ -31,7 +32,7 @@ import netutil
 import proxy
 import refupdate
 import verify
-from appinfo import APP_NAME, APP_VER
+from appinfo import APP_NAME, APP_VER, APP_VER_DISPLAY, BETA_NOTE
 
 
 class AdminRequired(Exception):
@@ -56,7 +57,9 @@ def log(event, **kw):
 
 
 def result(command, ok=True, **payload):
-    d = {'ok': ok, 'tool': APP_NAME, 'version': APP_VER, 'command': command}
+    d = {'ok': ok, 'tool': APP_NAME, 'version': APP_VER_DISPLAY, 'command': command}
+    if BETA_NOTE:
+        d['beta_note'] = BETA_NOTE
     d.update(payload)
     return d
 
@@ -146,6 +149,9 @@ def flows_to_channels(r):
 
 def _analyze_to_result(command, path):
     if path.lower().endswith('.etl'):
+        if not netutil.IS_WIN:
+            return result(command, ok=False,
+                          error='etl 是 Windows pktmon 抓包产物，请在 Windows 上分析，或提供 pcap/pcapng 文件')
         pm = capture.Pktmon(os.path.dirname(os.path.abspath(path)))
         pm.etl = path
         pm.pcap = path + '.pcap'
@@ -169,9 +175,13 @@ def _analyze_to_result(command, path):
 
 def cmd_info(args):
     ifaces = netutil.list_interfaces()
+    backend, backend_path = netutil.capture_backend()
     return result('info',
                   admin=netutil.is_admin(),
+                  platform=sys.platform,
                   pktmon=netutil.pktmon_path(),
+                  capture_backend=backend,
+                  capture_backend_path=backend_path,
                   app_dir=channeldb.app_dir(),
                   interfaces=ifaces,
                   suggested_multicast_iface=netutil.pick_multicast_iface(ifaces),
@@ -264,14 +274,20 @@ def cmd_verify(args):
 
 
 def cmd_capture(args):
+    if netutil.IS_WIN:
+        admin_msg = '抓包需要管理员权限（pktmon）'
+        admin_hint = '在管理员 PowerShell/cmd 中运行本命令；verify/m3u/refdb 等其它子命令不需要管理员'
+        missing_msg = '未找到 pktmon（需要 Windows 10 1809+ / Windows 11）'
+    else:
+        admin_msg = '抓包需要 root 权限（tcpdump）'
+        admin_hint = '用 sudo 运行本命令；verify/m3u/refdb 等其它子命令不需要 root'
+        missing_msg = '未找到 tcpdump（Linux: sudo apt install tcpdump；macOS 系统自带）'
     if not netutil.is_admin():
-        raise AdminRequired('抓包需要管理员权限（pktmon）',
-                            hint='在管理员 PowerShell/cmd 中运行本命令；verify/m3u/refdb 等其它子命令不需要管理员')
+        raise AdminRequired(admin_msg, hint=admin_hint)
     workdir = args.workdir or os.path.join(channeldb.app_dir(), 'cap_temp')
-    pm = capture.Pktmon(workdir)
+    pm = capture.get_engine(workdir, iface=getattr(args, 'iface', None))
     if not pm.available():
-        return result('capture', ok=False,
-                      error='未找到 pktmon（需要 Windows 10 1809+ / Windows 11）')
+        return result('capture', ok=False, error=missing_msg)
     ok, msg = pm.start()
     if not ok:
         return result('capture', ok=False, error=msg)
@@ -394,13 +410,14 @@ def build_parser():
     ap = argparse.ArgumentParser(
         prog='wushuang-iptv',
         description='%s v%s · headless CLI（stdout=单个JSON结果, stderr=JSONL进度, '
-                    '退出码 0成功/1失败/2参数错误/3需管理员）' % (APP_NAME, APP_VER))
+                    '退出码 0成功/1失败/2参数错误/3需管理员）%s' % (APP_NAME, APP_VER_DISPLAY,
+                                                                  (' ' + BETA_NOTE) if BETA_NOTE else ''))
     sub = ap.add_subparsers(dest='command', required=True)
 
     def common(p):
         p.add_argument('--out', metavar='FILE', help='结果 JSON 同时写入文件（GUI版exe无控制台时必需）')
 
-    p = sub.add_parser('info', help='环境总览：管理员/pktmon/网卡/参考库/建议网卡')
+    p = sub.add_parser('info', help='环境总览：管理员/抓包后端/网卡/参考库/建议网卡')
     common(p)
     p.set_defaults(func=cmd_info)
 
@@ -434,9 +451,10 @@ def build_parser():
     common(p)
     p.set_defaults(func=cmd_verify)
 
-    p = sub.add_parser('capture', help='pktmon 抓包并分析出频道候选（需管理员）')
+    p = sub.add_parser('capture', help='pktmon/tcpdump 抓包并分析出频道候选（Windows 需管理员，Linux/macOS 需 sudo）')
     p.add_argument('--seconds', type=int, default=90, help='抓包时长秒数，默认90；期间请让机顶盒换台')
     p.add_argument('--workdir', help='抓包临时目录，默认 程序目录/cap_temp')
+    p.add_argument('--iface', help='抓包网卡（Linux/macOS：设备名或 IP；缺省 Linux=any，macOS=建议有线口）')
     p.add_argument('--keep-pcap', action='store_true', help='分析后保留 pcap 文件')
     common(p)
     p.set_defaults(func=cmd_capture)

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""自测：合成 TS/pcap/pcapng + M3U 往返 + 向导逻辑 + 参考库。
+"""自测：合成 TS/pcap/pcapng/SLL + M3U 往返 + 向导逻辑 + 参考库 + 跨平台层。
 用法: python selftest.py [--real]  (--real 追加真实 test.ts / cap.pcap 测试)
 """
 import os
@@ -13,6 +13,7 @@ import capture
 import channeldb
 import m3u
 import naspush
+import netutil
 import tsutil
 import wizard
 
@@ -348,13 +349,68 @@ def test_naspush():
         check('NAS推送: 空路径报错', True)
 
 
+# ---------- 跨平台层 ----------
+def test_platform():
+    check('平台: 系统识别', netutil.IS_WIN or netutil.IS_MAC or netutil.IS_LINUX, sys.platform)
+    ifaces = netutil.list_interfaces()
+    check('平台: 网卡枚举', isinstance(ifaces, list), 'n=%d' % len(ifaces))
+    keys = {'name', 'desc', 'mac', 'ipv4', 'gateway', 'dhcp', 'kind'}
+    check('平台: 网卡结构一致', all(keys <= set(i) for i in ifaces))
+    fake = [{'name': 'w', 'kind': 'wifi', 'ipv4': '192.168.1.5', 'gateway': '192.168.1.1'},
+            {'name': 'e', 'kind': 'wired', 'ipv4': '169.254.1.2', 'gateway': ''},
+            {'name': 'e2', 'kind': 'wired', 'ipv4': '192.168.1.6', 'gateway': '192.168.1.1'}]
+    check('平台: 组播口优先有线带网关', netutil.pick_multicast_iface(fake) == '192.168.1.6')
+    check('平台: udpxy 地址优先网关口', netutil.lan_ip_for_udpxy(fake) == '192.168.1.5')
+    eng = capture.get_engine(tempfile.mkdtemp(prefix='iptv_eng_'))
+    check('平台: 抓包引擎工厂', eng.name in ('pktmon', 'tcpdump')
+          and all(hasattr(eng, m) for m in ('available', 'start', 'stop', 'convert', 'cleanup')))
+    backend, path = netutil.capture_backend()
+    check('平台: 后端探测一致', (backend is None) == (path is None), str(backend))
+
+
+def sll_wrap(eth_pkt, linktype):
+    """以太网帧 → LINUX_SLL(113)/SLL2(276) 帧（tcpdump -i any 产物）。"""
+    ip_pkt = eth_pkt[14:]
+    if linktype == 113:
+        return struct.pack('!HHH8sH', 0, 1, 6, b'\x00' * 8, 0x0800) + ip_pkt
+    return struct.pack('!HHIHBB8s', 0x0800, 0, 2, 1, 0, 6, b'\x00' * 8) + ip_pkt
+
+
+def make_pcap_sll(path, ts_data, linktype):
+    pkts = [sll_wrap(igmp_report('233.50.201.118'), linktype)]
+    chunk = ts_data[:1316]
+    for i in range(10):
+        pkts.append(sll_wrap(eth_ip_udp('10.20.30.40', '233.50.201.118', 5000, 5140,
+                                        chunk, ip_id=100 + i), linktype))
+    with open(path, 'wb') as f:
+        f.write(struct.pack('<IHHiIII', 0xa1b2c3d4, 2, 4, 0, 0, 65535, linktype))
+        for i, p in enumerate(pkts):
+            f.write(struct.pack('<IIII', 1700000000 + i, i * 1000, len(p), len(p)))
+            f.write(p)
+
+
+def test_capture_sll():
+    ts_data = make_test_ts()
+    tmp = tempfile.mkdtemp(prefix='iptv_selftest_')
+    for lt, kind in ((113, 'SLL'), (276, 'SLL2')):
+        p = os.path.join(tmp, 't_%s.pcap' % kind)
+        make_pcap_sll(p, ts_data, lt)
+        r = capture.analyze(p)
+        flows = [f for f in r['flows'] if not f['noise']]
+        check('抓包: %s 组播流' % kind,
+              len(flows) == 1 and flows[0]['group'] == '233.50.201.118' and flows[0]['pkts'] == 10)
+        check('抓包: %s IGMP 加组' % kind, r['joins'].get('233.50.201.118') == 1)
+
+
 def main():
     test_ts()
     test_capture()
+    test_capture_sll()
     test_m3u()
     test_wizard()
     test_db()
     test_naspush()
+    test_platform()
     if '--real' in sys.argv:
         test_real()
     failed = [n for n, ok in RESULTS if not ok]

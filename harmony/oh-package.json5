@@ -1,0 +1,8 @@
+{
+  "modelVersion": "6.0.0",
+  "description": "无双IPTV抓源工具 · 鸿蒙精简版（参考库+验证+M3U+转发）",
+  "dependencies": {
+  },
+  "devDependencies": {
+  }
+}

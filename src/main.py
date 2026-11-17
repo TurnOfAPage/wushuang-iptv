@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-"""无双IPTV抓源工具 · Windows 单文件绿色版
-接线向导 → pktmon 抓包分析 → 原生组播验证 → M3U 生成/目录更新 → 可选 HTTP 转发。
+"""无双IPTV抓源工具 · 跨平台单文件绿色版（Windows / Linux / macOS）
+接线向导 → 抓包分析（Windows pktmon / Linux·macOS tcpdump）→ 原生组播验证 → M3U 生成/目录更新 → 可选 HTTP 转发。
 全国 31 省×运营商组播参考库，支持在线更新/离线导入。
 作者：锤无双  https://www.bilibili.com/video/BV17SWk6VEPZ/
 """
@@ -11,9 +11,13 @@ import queue
 import sys
 import threading
 import time
-import tkinter as tk
 import webbrowser
-from tkinter import ttk, filedialog, messagebox
+
+try:
+    import tkinter as tk
+    from tkinter import ttk, filedialog, messagebox
+except ImportError:  # 无头 Linux 服务器：CLI/selftest 仍可用，GUI 启动时再报错
+    tk = None
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -27,7 +31,7 @@ import refupdate
 import verify
 import wizard
 
-from appinfo import APP_NAME, APP_VER, AUTHOR, AUTHOR_URL, TUTORIAL_URL, QQ_GROUP
+from appinfo import APP_NAME, APP_VER, APP_VER_DISPLAY, BETA_NOTE, AUTHOR, AUTHOR_URL, TUTORIAL_URL, QQ_GROUP
 
 # ---- 配色 ----
 BG = '#f2f5fa'
@@ -39,10 +43,54 @@ SUB = '#64748b'
 OKC = '#16a34a'
 BADC = '#dc2626'
 WARNC = '#d97706'
-FONT = ('Microsoft YaHei UI', 10)
-FONT_B = ('Microsoft YaHei UI', 10, 'bold')
-FONT_S = ('Microsoft YaHei UI', 9)
-MONO = ('Consolas', 10)
+# ---- 字体（跨平台：按系统选默认中文字体，App 启动时再按实际可用字体回退） ----
+FONT_FAMILY = ('Microsoft YaHei UI' if netutil.IS_WIN else
+               'PingFang SC' if netutil.IS_MAC else 'Noto Sans CJK SC')
+MONO_FAMILY = 'Consolas' if netutil.IS_WIN else ('Menlo' if netutil.IS_MAC else 'DejaVu Sans Mono')
+
+
+def F(size, bold=False):
+    """按当前字体家族生成 font 元组（bold 传 True 或 'bold' 均可）。"""
+    return (FONT_FAMILY, size, 'bold') if bold else (FONT_FAMILY, size)
+
+
+FONT = F(10)
+FONT_B = F(10, True)
+FONT_S = F(9)
+MONO = (MONO_FAMILY, 10)
+
+
+def _finalize_fonts(root):
+    """Tk 就绪后按系统实际安装的字体回退，避免 Linux 缺雅黑时显示异常。"""
+    global FONT_FAMILY, MONO_FAMILY, FONT, FONT_B, FONT_S, MONO
+    try:
+        import tkinter.font as tkfont
+        fams = set(tkfont.families(root))
+    except Exception:
+        return
+    if FONT_FAMILY not in fams:
+        for cand in ('Microsoft YaHei UI', 'PingFang SC', 'Noto Sans CJK SC',
+                     'Source Han Sans SC', 'WenQuanYi Micro Hei', 'Droid Sans Fallback',
+                     'Arial Unicode MS'):
+            if cand in fams:
+                FONT_FAMILY = cand
+                break
+    if MONO_FAMILY not in fams:
+        for cand in ('Consolas', 'Menlo', 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New'):
+            if cand in fams:
+                MONO_FAMILY = cand
+                break
+    FONT = F(10)
+    FONT_B = F(10, True)
+    FONT_S = F(9)
+    MONO = (MONO_FAMILY, 10)
+
+
+def _capture_note():
+    if netutil.IS_WIN:
+        return '抓包用 Windows 内置 pktmon（Win10 1809+），无需安装 Wireshark/Npcap/任何驱动。'
+    return ('抓包用系统 tcpdump（Linux: sudo apt install tcpdump；macOS 自带），需 sudo 启动本程序；'
+            '验证/M3U/转发不需要 root。')
 
 
 def app_dir():
@@ -114,7 +162,7 @@ class RefDialog(tk.Toplevel):
         self.resizable(False, False)
         self.result = None
         info = channeldb.db_info()
-        ttk.Label(self, text='全国组播参考库', font=('Microsoft YaHei UI', 12, 'bold')).grid(
+        ttk.Label(self, text='全国组播参考库', font=F(12, 'bold')).grid(
             row=0, column=0, columnspan=2, sticky='w', padx=14, pady=(12, 2))
         ttk.Label(self, style='Hint.TLabel',
                   text='数据更新：%s · 来源：%s · %d 省 %d 列表 %d 频道' % (
@@ -177,7 +225,7 @@ class RefDialog(tk.Toplevel):
 class App:
     def __init__(self, root):
         self.root = root
-        root.title('%s v%s' % (APP_NAME, APP_VER))
+        root.title('%s v%s' % (APP_NAME, APP_VER_DISPLAY))
         root.geometry('%dx%d' % (px(1180), px(820)))
         root.minsize(px(1040), px(700))
         root.configure(bg=BG)
@@ -188,9 +236,10 @@ class App:
             pass
         self.cfg = self._load_cfg()
         self.channels = self.cfg.get('channels', [])
+        _finalize_fonts(root)
         self.ifaces = netutil.list_interfaces()
         self.q = queue.Queue()
-        self.pktmon = capture.Pktmon(os.path.join(app_dir(), 'cap_temp'))
+        self.cap = capture.get_engine(os.path.join(app_dir(), 'cap_temp'))
         self.proxy_srv = None
         self.cap_thread = None
         self.ver_thread = None
@@ -290,7 +339,7 @@ class App:
         st.configure('Warn.TLabel', foreground=BADC, background=BG)
         st.configure('Ok.TLabel', foreground=OKC, background=BG)
         st.configure('Title.TLabel', foreground=ACCENT_DARK, background=BG,
-                     font=('Microsoft YaHei UI', 11, 'bold'))
+                     font=F(11, 'bold'))
 
     # ================= 头部（与界面统一的浅色设计） =================
     def _build_banner(self):
@@ -316,7 +365,7 @@ class App:
                 self._header_icon = None
         txt = tk.Frame(row, bg=CARD)
         txt.pack(side='left')
-        tk.Label(txt, text=APP_NAME, font=('Microsoft YaHei UI', 18, 'bold'),
+        tk.Label(txt, text=APP_NAME, font=F(18, 'bold'),
                  fg=TEXT, bg=CARD).pack(anchor='w')
         tk.Label(txt, text='全国组播直播源 · 抓包分析 · 频道验证 · 一键生成 M3U',
                  font=FONT_S, fg=SUB, bg=CARD).pack(anchor='w', pady=(2, 0))
@@ -387,13 +436,21 @@ class App:
         self._update_status()
 
     def _update_status(self):
-        admin = '管理员✓' if netutil.is_admin() else '⚠非管理员(抓包需管理员)'
-        pk = 'pktmon✓' if self.pktmon.available() else '⚠pktmon不可用(需Win10 1809+)'
+        if netutil.IS_WIN:
+            admin = '管理员✓' if netutil.is_admin() else '⚠非管理员(抓包需管理员)'
+        else:
+            admin = 'root✓' if netutil.is_admin() else '⚠非root(抓包需sudo)'
+        backend, _ = netutil.capture_backend()
+        if self.cap.available():
+            pk = '%s✓' % backend
+        else:
+            pk = '⚠pktmon不可用(需Win10 1809+)' if netutil.IS_WIN else '⚠tcpdump不可用(请安装)'
         wired = [i['ipv4'] for i in self.ifaces if i['kind'] == 'wired' and i['ipv4']]
         wifi = [i['ipv4'] for i in self.ifaces if i['kind'] == 'wifi' and i['ipv4']]
         okc = sum(1 for c in self.channels if c.get('ok'))
-        self.status_lbl.config(text='%s | %s | 有线:%s | WiFi:%s | 频道 %d (可用 %d)'
-                               % (admin, pk, ','.join(wired) or '无',
+        prefix = '⚠测试版·未真机测试·仅供参考 | ' if BETA_NOTE else ''
+        self.status_lbl.config(text='%s%s | %s | 有线:%s | WiFi:%s | 频道 %d (可用 %d)'
+                               % (prefix, admin, pk, ','.join(wired) or '无',
                                   ','.join(wifi) or '无', len(self.channels), okc))
 
     def _log(self, msg):
@@ -534,15 +591,15 @@ class App:
 
         def box(x, y, w, h, title, sub='', fill='#eef4ff'):
             c.create_rectangle(x, y, x + w, y + h, fill=fill, outline='#4a6fa5', width=px(2))
-            c.create_text(x + w / 2, y + 16, text=title, font=('Microsoft YaHei UI', 9, 'bold'))
+            c.create_text(x + w / 2, y + 16, text=title, font=F(9, 'bold'))
             if sub:
-                c.create_text(x + w / 2, y + 36, text=sub, font=('Microsoft YaHei UI', 8), fill='#444')
+                c.create_text(x + w / 2, y + 36, text=sub, font=F(8), fill='#444')
 
         def line(x1, y1, x2, y2, color='#4a6fa5', dash=None, label='', lx=0, ly=0, width=2):
             c.create_line(x1, y1, x2, y2, fill=color, width=px(width), dash=dash)
             if label:
                 c.create_text((x1 + x2) / 2 + lx, (y1 + y2) / 2 + ly, text=label,
-                              font=('Microsoft YaHei UI', 8), fill=color)
+                              font=F(8), fill=color)
 
         if topo == 'router':
             igmp = self.wiz_vars.get('router_igmp') and self.wiz_vars['router_igmp'].get() == 'yes'
@@ -556,10 +613,10 @@ class App:
             if igmp:
                 line(320, 110, 320, 170, '#0a7a0a', dash=(4, 3), label='组播转发→LAN', lx=70)
                 c.create_text(300, 245, text='已开组播转发：电脑在普通 LAN 口即可抓包/验证，免交换机',
-                              font=('Microsoft YaHei UI', 8), fill='#0a7a0a')
+                              font=F(8), fill='#0a7a0a')
             else:
                 c.create_text(300, 245, text='未开组播转发：电脑需接 IPTV 绑定口，或在该口下接交换机',
-                              font=('Microsoft YaHei UI', 8), fill='#d97706')
+                              font=F(8), fill='#d97706')
             return
 
         box(20, 20, 150, 70, '光猫', ont + ' / 上网口')
@@ -582,13 +639,15 @@ class App:
         line(170, 215, 470, 215, hi if (not merged and idx == 5) else '#888888',
              dash=(2, 3), label='WiFi 上网', ly=-10)
         c.create_text(300, 245, text='绿色=已接/应接  橙色=当前步骤  虚线=无线/可选',
-                      font=('Microsoft YaHei UI', 8), fill='#666666')
+                      font=F(8), fill='#666666')
 
     # ================= 抓包页 =================
     def _build_capture(self):
         self.tab_cap = ttk.Frame(self.nb)
         self.nb.add(self.tab_cap, text=' ② 抓包分析 ')
-        top = ttk.LabelFrame(self.tab_cap, text='抓包控制（Windows 内置 pktmon，无需安装任何驱动）')
+        cap_note = ('Windows 内置 pktmon，无需安装任何驱动' if netutil.IS_WIN
+                    else '系统 tcpdump，需 sudo 启动本程序')
+        top = ttk.LabelFrame(self.tab_cap, text='抓包控制（%s）' % cap_note)
         top.pack(fill='x', padx=6, pady=6)
         r1 = ttk.Frame(top)
         r1.pack(fill='x', padx=6, pady=4)
@@ -638,35 +697,39 @@ class App:
 
     def _cap_start(self):
         if not netutil.is_admin():
-            messagebox.showerror(APP_NAME, '抓包需要管理员权限。\n请右键本程序 → 以管理员身份运行。')
+            messagebox.showerror(APP_NAME, '抓包需要管理员权限。\n请右键本程序 → 以管理员身份运行。'
+                                 if netutil.IS_WIN else
+                                 '抓包需要 root 权限。\n请在终端用 sudo 启动本程序。')
             return
-        if not self.pktmon.available():
-            messagebox.showerror(APP_NAME, '未找到 pktmon。需要 Windows 10 1809+ 或 Windows 11。')
+        if not self.cap.available():
+            messagebox.showerror(APP_NAME, '未找到 pktmon。需要 Windows 10 1809+ 或 Windows 11。'
+                                 if netutil.IS_WIN else
+                                 '未找到 tcpdump。Linux: sudo apt install tcpdump；macOS 系统自带。')
             return
         if self.cap_thread and self.cap_thread.is_alive():
             return
         self.cap_start_btn.config(state='disabled')
-        self.cap_state_lbl.config(text='正在启动 pktmon…')
+        self.cap_state_lbl.config(text='正在启动 %s…' % self.cap.name)
 
         def work():
-            ok, msg = self.pktmon.start()
+            ok, msg = self.cap.start()
             self.q.put(('cap_started', ok, msg))
         self.cap_thread = threading.Thread(target=work, daemon=True)
         self.cap_thread.start()
 
     def _cap_stop(self):
-        if not self.pktmon.running or self.cap_stopping:
+        if not self.cap.running or self.cap_stopping:
             return
         self.cap_stopping = True
         self.cap_stop_btn.config(state='disabled')
         self.cap_state_lbl.config(text='正在停止抓包并转换格式（大文件可能需要 1~2 分钟）…')
 
         def work():
-            ok, msg = self.pktmon.stop()
+            ok, msg = self.cap.stop()
             if not ok:
                 self.q.put(('cap_error', msg))
                 return
-            ok, pcap = self.pktmon.convert()
+            ok, pcap = self.cap.convert()
             if not ok:
                 self.q.put(('cap_error', pcap))
                 return
@@ -677,7 +740,7 @@ class App:
                 self.q.put(('cap_error', '分析失败: %s' % e))
                 return
             if not self.keep_pcap_var.get():
-                self.pktmon.cleanup(keep_pcap=False)
+                self.cap.cleanup(keep_pcap=False)
             self.q.put(('cap_done', r))
         self.cap_thread = threading.Thread(target=work, daemon=True)
         self.cap_thread.start()
@@ -692,6 +755,10 @@ class App:
         def work():
             p = path
             if path.lower().endswith('.etl'):
+                if not netutil.IS_WIN:
+                    self.q.put(('cap_error', 'etl 是 Windows pktmon 抓包产物，请在 Windows 上分析，'
+                                             '或提供 pcap/pcapng 文件'))
+                    return
                 pm = capture.Pktmon(os.path.dirname(path))
                 pm.etl = path
                 pm.pcap = path + '.pcap'
@@ -1320,7 +1387,9 @@ class App:
         self.prox_start_btn.pack(side='left', padx=8)
         self.prox_stop_btn = ttk.Button(r, text='■ 停止', command=self._prox_stop, state='disabled')
         self.prox_stop_btn.pack(side='left', padx=4)
-        self.prox_state_lbl = ttk.Label(top, text='未运行。启动后首次会弹 Windows 防火墙提示，请点「允许(专用网络)」。',
+        self.prox_state_lbl = ttk.Label(top, text=('未运行。启动后首次会弹 Windows 防火墙提示，请点「允许(专用网络)」。'
+                                                   if netutil.IS_WIN else
+                                                   '未运行。若系统防火墙开启，请允许本程序监听端口（仅限局域网）。'),
                                         style='Hint.TLabel', wraplength=px(1050), justify='left')
         self.prox_state_lbl.pack(fill='x', padx=6, pady=(0, 6))
         uf = ttk.LabelFrame(self.tab_prox, text='播放地址（复制到 VLC / Kodi / DIYP / 电视盒子）')
@@ -1384,7 +1453,7 @@ class App:
         row = ttk.Frame(about)
         row.pack(fill='x', padx=10, pady=6)
         ttk.Label(row, text='%s v%s · 单文件绿色版' % (APP_NAME, APP_VER),
-                  font=('Microsoft YaHei UI', 12, 'bold')).pack(side='left')
+                  font=F(12, 'bold')).pack(side='left')
         links = ttk.Frame(about)
         links.pack(fill='x', padx=10, pady=(0, 8))
         self._link(links, '作者：锤无双 ↗（B站）', AUTHOR_URL).pack(side='left', padx=(0, 24))
@@ -1397,7 +1466,8 @@ class App:
         txt.configure(yscrollcommand=sb.set)
         txt.pack(side='left', fill='both', expand=True, padx=(6, 0), pady=(0, 6))
         sb.pack(side='right', fill='y', pady=(0, 6))
-        txt.insert('1.0', HELP_TEXT)
+        txt.insert('1.0', HELP_TEXT.replace('{CAPTURE_NOTE}', _capture_note())
+                   + ('\n【测试版声明】\n' + BETA_NOTE + '\n' if BETA_NOTE else ''))
         txt.configure(state='disabled')
 
     def _link(self, parent, text, url, copy=None):
@@ -1485,7 +1555,7 @@ class App:
                 messagebox.showwarning(APP_NAME, msg)
 
     def _tick(self):
-        if self.cap_started and self.pktmon.running:
+        if self.cap_started and self.cap.running:
             el = int(time.time() - self.cap_started)
             auto = self.auto_stop_var.get()
             self.cap_state_lbl.config(text='● 抓包中 %d 秒%s… 请操作机顶盒换台（每频道停 3~5 秒）。' % (
@@ -1505,13 +1575,11 @@ class App:
         self.root.after(1000, self._tick)
 
     def _run_selftest(self):
-        import subprocess
         args = [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'selftest.py')] \
             if not getattr(sys, 'frozen', False) else [sys.executable, '--selftest']
         try:
-            r = subprocess.run(args, capture_output=True, timeout=120, creationflags=0x08000000)
-            out = (r.stdout or b'').decode('utf-8', 'replace')
-            messagebox.showinfo(APP_NAME + ' 自测', out[-3000:] or ('exit=%d' % r.returncode))
+            code, out = netutil.run_hidden(args, timeout=120)
+            messagebox.showinfo(APP_NAME + ' 自测', out[-3000:] or ('exit=%d' % code))
         except Exception as e:
             messagebox.showerror(APP_NAME, str(e))
 
@@ -1519,8 +1587,8 @@ class App:
         try:
             if self.proxy_srv and self.proxy_srv.running:
                 self.proxy_srv.stop()
-            if self.pktmon.running:
-                self.pktmon.stop()
+            if self.cap.running:
+                self.cap.stop()
             self.ver_stop.set()
             self.upd_stop.set()
             self.cfg['auto_stop_sec'] = self.auto_stop_var.get()
@@ -1538,7 +1606,7 @@ HELP_TEXT = '''【原理速览】
   · 组播免鉴权：任何设备进入该 VLAN 并加入组播组即可收流；DHCP+ 鉴权只影响单播业务(EPG/回看/时移)。
   · 傻瓜交换机没有 IGMP Snooping，会把组播泛洪到所有口 → 电脑有线口"搭线"即可抓包。
   · 电脑有线口进 ITV 专网后拿不到 DHCP（显示 169.254.x.x）是正常现象，不影响抓包与加组。
-  · 抓包用 Windows 内置 pktmon（Win10 1809+），无需安装 Wireshark/Npcap/任何驱动。
+  · {CAPTURE_NOTE}
   · 本工具验证频道 = 真实加入组播组收流并解析 MPEG-TS（PAT/PMT/SDT），不依赖 ffmpeg。
 
 【三步流程】
@@ -1570,7 +1638,7 @@ HELP_TEXT = '''【原理速览】
 注意：合并后重新接回机顶盒可能从路由器拿错 IP 导致认证失败 → 拔掉桥接线即恢复隔离。
 
 【故障排查】
-  抓包 0 结果        → 是否管理员运行？机顶盒是否开机换台？交换机是否傻瓜型(关 IGMP Snooping)？网线是否插紧？
+  抓包 0 结果        → 是否管理员/root 运行？机顶盒是否开机换台？交换机是否傻瓜型(关 IGMP Snooping)？网线是否插紧？
   有线口无 169.254   → 网线/交换机口坏，换口；确认接的是 ITV 信号线而不是上网线。
   验证全部失败       → 组播网卡选错？搭线阶段选有线口(169.254.x)；已桥接选有线口(192.168.x)。个别路由器 WiFi 不转发组播。
   个别频道不可用     → 停播/未开通/外地地方台不在本地播发；参考库地址随运营商调整会变化，以实测为准。
@@ -1590,19 +1658,29 @@ HELP_TEXT = '''【原理速览】
 视频教程：https://www.bilibili.com/video/BV17SWk6VEPZ/
 开源仓库：https://github.com/chuiziyao/wushuang-iptv
 配置保存在程序目录 WushuangIPTV.json；参考库更新文件 refdb.json；抓包临时目录 cap_temp（默认自动清理）。
-技术：pktmon 抓包 / pcap+pcapng 解析(去重) / IGMP 分析 / 原生 TS(PAT/PMT/SDT/SPS) 解析 / 组播加组验证 / udpxy 等价转发。
+技术：pktmon/tcpdump 抓包 / pcap+pcapng 解析(去重) / IGMP 分析 / 原生 TS(PAT/PMT/SDT/SPS) 解析 / 组播加组验证 / udpxy 等价转发。
 '''
 
 
 def _setup_window_icon(root):
     """窗口/任务栏电视图标（exe 文件图标由 PyInstaller --icon 设置）。"""
     base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-    ico = os.path.join(base, 'app.ico')
-    if os.path.exists(ico):
-        try:
-            root.iconbitmap(ico)
-        except tk.TclError:
-            pass
+    if netutil.IS_WIN:
+        ico = os.path.join(base, 'app.ico')
+        if os.path.exists(ico):
+            try:
+                root.iconbitmap(ico)
+            except tk.TclError:
+                pass
+    else:
+        png = os.path.join(base, 'icon_44.png')
+        if os.path.exists(png):
+            try:
+                img = tk.PhotoImage(file=png)
+                root.iconphoto(True, img)
+                root._wushuang_icon = img  # 保持引用，防止被 GC
+            except tk.TclError:
+                pass
 
 
 def main():
@@ -1614,18 +1692,26 @@ def main():
         import selftest
         selftest.main()
         return
+    if tk is None:
+        print('未安装 tkinter，无法启动图形界面。请安装：\n'
+              '  Debian/Ubuntu: sudo apt install python3-tk\n'
+              '  Fedora:        sudo dnf install python3-tkinter\n'
+              '  macOS:         使用 python.org 官方 Python（自带 Tk）\n'
+              '命令行功能不受影响：python3 main.py cli <子命令>', file=sys.stderr)
+        sys.exit(1)
     global SCALE
-    try:
-        ctypes = __import__('ctypes')
-        ctypes.windll.shcore.SetProcessDpiAwareness(1)
-        # 任务栏图标与窗口一致（否则 Windows 任务栏显示 python 默认图标）
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('Wushuang.IPTV.Tool.2')
-        # 按系统真实 DPI 缩放（Win10 1607+；失败则保持 1.0）
-        dpi = ctypes.windll.user32.GetDpiForSystem()
-        if dpi > 0:
-            SCALE = dpi / 96.0
-    except Exception:
-        pass
+    if netutil.IS_WIN:
+        try:
+            ctypes = __import__('ctypes')
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+            # 任务栏图标与窗口一致（否则 Windows 任务栏显示 python 默认图标）
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('Wushuang.IPTV.Tool.2')
+            # 按系统真实 DPI 缩放（Win10 1607+；失败则保持 1.0）
+            dpi = ctypes.windll.user32.GetDpiForSystem()
+            if dpi > 0:
+                SCALE = dpi / 96.0
+        except Exception:
+            pass
     root = tk.Tk()
     _setup_window_icon(root)
     app = App(root)

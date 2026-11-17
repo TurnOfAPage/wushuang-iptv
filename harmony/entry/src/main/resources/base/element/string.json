@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "无双IPTV抓源工具鸿蒙精简版：参考库载入、组播验证、M3U生成、HTTP转发"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "无双IPTV"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "无双IPTV"
+    }
+  ]
+}

@@ -1,15 +1,20 @@
 # -*- coding: utf-8 -*-
-"""抓包引擎：Windows 内置 pktmon（无需 Wireshark/Npcap）+ pcap/pcapng 解析 + IGMP/组播分析。
+"""抓包引擎（跨平台）：Windows 内置 pktmon（无需 Wireshark/Npcap）；
+Linux/macOS 用系统 tcpdump（需 root/sudo）。pcap/pcapng 解析 + IGMP/组播分析全平台共用。
 经验（实测总结）：
 - pktmon etl2pcap 产物实际是 pcapng；
 - pktmon 全 NIC/多组件抓包会重复 6~8 份，必须去重；
+- tcpdump -i any 产物是 LINUX_SLL/SLL2 链路类型，同样支持；
 - 过滤 224.0.0.x / SSDP / mDNS / LLMNR 噪声。
 """
 import os
 import re
+import signal
 import struct
+import subprocess
 import time
 
+import netutil
 from netutil import pktmon_path, run_hidden
 
 NOISE_GROUPS = {'239.255.255.250'}
@@ -27,7 +32,8 @@ def is_noise(group, port):
 
 
 class Pktmon:
-    """pktmon 生命周期封装。调用方需管理员权限。"""
+    """pktmon 生命周期封装（Windows）。调用方需管理员权限。"""
+    name = 'pktmon'
 
     def __init__(self, workdir):
         self.workdir = workdir
@@ -84,6 +90,124 @@ class Pktmon:
                 os.remove(self.pcap)
         except OSError:
             pass
+
+
+class Tcpdump:
+    """tcpdump 生命周期封装（Linux/macOS），接口与 Pktmon 一致。调用方需 root。
+    Linux 缺省 -i any（抓全部网卡，SLL 链路类型）；macOS 无 any，缺省选建议的有线口。
+    iface 可传设备名（eth0/en0）或网卡 IP（自动解析为设备名）。"""
+    name = 'tcpdump'
+
+    def __init__(self, workdir, iface=None):
+        self.workdir = workdir
+        self.pcap = os.path.join(workdir, 'iptv_cap.pcap')
+        self.exe = netutil.tcpdump_path()
+        self.iface = iface
+        self.proc = None
+        self.running = False
+        self.started_at = None
+
+    def available(self):
+        return self.exe is not None
+
+    def _resolve_iface(self):
+        if self.iface:
+            # 允许传 IP：解析成设备名
+            for i in netutil.list_interfaces():
+                if self.iface in (i['name'], i['ipv4']):
+                    return i['name']
+            return self.iface  # 信任用户给的设备名
+        if netutil.IS_LINUX:
+            return 'any'
+        ip = netutil.pick_multicast_iface(netutil.list_interfaces())
+        for i in netutil.list_interfaces():
+            if i['ipv4'] == ip:
+                return i['name']
+        return ''
+
+    def start(self):
+        if not self.exe:
+            return False, '未找到 tcpdump（Linux: sudo apt install tcpdump；macOS 系统自带）'
+        if not netutil.is_admin():
+            return False, '抓包需要 root 权限，请用 sudo 运行'
+        iface = self._resolve_iface()
+        if not iface:
+            return False, '未找到可用网卡，请用 --iface 指定抓包网卡（设备名或 IP）'
+        os.makedirs(self.workdir, exist_ok=True)
+        try:
+            if os.path.exists(self.pcap):
+                os.remove(self.pcap)
+        except OSError:
+            pass
+        try:
+            self.proc = subprocess.Popen(
+                [self.exe, '-i', iface, '-s', '0', '-U', '-w', self.pcap],
+                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        except Exception as e:
+            return False, 'tcpdump 启动失败: %s' % e
+        time.sleep(0.4)
+        if self.proc.poll() is not None:
+            err = b''
+            try:
+                err = self.proc.stderr.read() or b''
+            except Exception:
+                pass
+            self.proc = None
+            return False, 'tcpdump 启动失败: %s' % err.decode('utf-8', 'replace').strip()[:400]
+        self.running = True
+        self.started_at = time.time()
+        return True, '抓包已开始（tcpdump -i %s）' % iface
+
+    def stop(self):
+        if not self.proc:
+            self.running = False
+            return False, 'tcpdump 未在运行'
+        try:
+            self.proc.send_signal(signal.SIGINT)  # 让 tcpdump 正常刷盘并输出统计
+            try:
+                self.proc.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                self.proc.terminate()
+                try:
+                    self.proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self.proc.kill()
+        except Exception:
+            pass
+        stats = ''
+        try:
+            stats = (self.proc.stderr.read() or b'').decode('utf-8', 'replace').strip()
+        except Exception:
+            pass
+        self.proc = None
+        self.running = False
+        return True, stats[:400] or '抓包已停止'
+
+    def convert(self):
+        # tcpdump 直接写 pcap，无需转换；保持与 Pktmon 相同的接口
+        if not os.path.exists(self.pcap):
+            return False, '未找到抓包文件 %s' % self.pcap
+        return True, self.pcap
+
+    def cleanup(self, keep_pcap=False):
+        if self.proc and self.proc.poll() is None:
+            try:
+                self.proc.kill()
+            except Exception:
+                pass
+        self.proc = None
+        try:
+            if not keep_pcap and os.path.exists(self.pcap):
+                os.remove(self.pcap)
+        except OSError:
+            pass
+
+
+def get_engine(workdir, iface=None):
+    """平台工厂：Windows→Pktmon；Linux/macOS→Tcpdump。GUI 与 CLI 共用。"""
+    if netutil.IS_WIN:
+        return Pktmon(workdir)
+    return Tcpdump(workdir, iface=iface)
 
 
 def iter_pcap(path):
@@ -185,6 +309,18 @@ def analyze(path, progress_cb=None, dedup=True):
                 p += 4
             if eth_type != 0x0800:
                 continue
+        elif linktype == 113:  # LINUX_SLL（tcpdump -i any，旧版）
+            if len(pkt) < 16:
+                continue
+            if struct.unpack('!H', pkt[14:16])[0] != 0x0800:
+                continue
+            p = 16
+        elif linktype == 276:  # LINUX_SLL2（tcpdump -i any，新版）
+            if len(pkt) < 20:
+                continue
+            if struct.unpack('!H', pkt[0:2])[0] != 0x0800:
+                continue
+            p = 20
         elif linktype == 101:  # raw IP
             p = 0
         else:
