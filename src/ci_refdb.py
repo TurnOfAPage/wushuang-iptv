@@ -21,7 +21,7 @@ def main():
         try:
             subprocess.run(['git', 'clone', '--depth', '1',
                             'https://github.com/xisohi/CHINA-IPTV.git', tmp],
-                           check=True, timeout=300)
+                           check=True, timeout=600)
             src = os.path.join(tmp, 'Multicast')
             os.makedirs(NAT, exist_ok=True)
             for prov in os.listdir(src):

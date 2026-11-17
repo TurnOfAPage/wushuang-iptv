@@ -288,7 +288,13 @@ def test_db():
     check('参考库: 覆盖31省', info['provinces'] == 31, str(info))
     check('参考库: 频道数>10000', info['channels'] > 10000)
     e = channeldb.lookup('233.50.201.118', 5140)
-    check('参考库: CCTV1 实测可用', e and e['name'] == 'CCTV1' and e.get('ok'))
+    # ok 标记来自本地实测叠加表 verify_results.json（gitignore，CI 无）：
+    # 有叠加表时严格断言实测可用；无叠加表时只断言在库且名称正确。
+    overlay = os.path.exists(os.path.join(channeldb.app_dir(), '..', 'verify_results.json'))
+    if overlay:
+        check('参考库: CCTV1 实测可用', e and e['name'] == 'CCTV1' and e.get('ok'))
+    else:
+        check('参考库: CCTV1 在库', e and e['name'] == 'CCTV1')
     zj = channeldb.channels_for('浙江', '电信')
     check('参考库: 浙江电信列表', len(zj) >= 162, 'n=%d' % len(zj))
     gd = channeldb.channels_for('广东', '电信')
