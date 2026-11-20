@@ -4,11 +4,12 @@
 
 让家里机顶盒退役：抓取 / 验证自家 IPTV 组播直播源，一键生成 M3U 播放列表，全家电视、手机、平板都能看直播。
 Windows **单文件绿色版**，双击即用，无需安装任何驱动 / 运行库。
-**v2.1 新增 CLI 命令行模式**（可被 AI 工具直接调用）与 **4K 高 DPI 字体自适应**，详见 [更新说明](CHANGELOG.md)。
+**v2.2 新增 `sweep` 组播全段扫频**（发现参考库外频道）、**转发剥 RTP 头 + IGMP 周期续期**、**抓包空结果 snooping 诊断**、
+**NAS Docker 鉴权转发（docker/）**；配套无双电视 APK 升级 **v1.1**（缓冲抗抖动）。详见 [更新说明](CHANGELOG.md)。
 
-> ### 🧪 跨平台测试版（v2.1.0-beta）
+> ### 🧪 跨平台测试版（v2.2.1-beta）
 > **Linux / macOS / 鸿蒙PC 版均为测试版：未做真机测试，仅供参考。**
-> Windows 版保持 v2.1.0 正式版不变。详见 [跨平台说明](docs/跨平台说明.md) 与 [鸿蒙版说明](harmony/README.md)。
+> Windows 版为 v2.2.1 正式版。详见 [跨平台说明](docs/跨平台说明.md) 与 [鸿蒙版说明](harmony/README.md)。
 
 ![接线向导](screenshots/1_接线向导.png)
 
@@ -24,7 +25,10 @@ Windows **单文件绿色版**，双击即用，无需安装任何驱动 / 运�
 - **全国参考库**：覆盖 31 省 × 电信/联通/移动/广电，按省份+运营商载入；支持在线更新 / 离线导入。
 - **生成 M3U**：`udp://` 组播直连 + `http://` udpxy 转发双格式，指定目录保存 / 合并 / 自动更新。
 - **一键推送 NAS**：SMB 共享 / WebDAV，抓完自动同步播放列表到 NAS，配合 Tvheadend/udpxy 实现 7×24 转发。
-- **转发服务**：内置 udpxy 等价服务，组播转 HTTP 单播，WiFi 设备播放更稳。
+- **转发服务**：内置 udpxy 等价服务，组播转 HTTP 单播，WiFi 设备播放更稳；v2.2 起自动剥 RTP 头（兼容裸 TS）、周期补发 IGMP 报告防无查询器网络加组老化断流。
+- **组播扫频 `sweep`（v2.2）**：CIDR/起止范围逐个真实加组收流，发现参考库未收录的频道（试看/轮播/地方台/改址普查）；抓包 0 结果但电视能看（IGMP snooping 定向转发）时的主力发现手段。
+- **抓包空结果诊断（v2.2）**：capture 0 候选时附 hint，指引 snooping 场景改走 verify/sweep 主动加组路线。
+- **NAS Docker 鉴权转发（v2.2，docker/）**：面向个人远程观看的加固版转发（强制 token/白名单/限流/封禁/续期/healthcheck），含群晖部署说明与 tv 开机任务依赖；见 [docker/README.md](docker/README.md)。
 - **CLI 命令行模式（v2.1）**：`WushuangIPTV-CLI.exe` 无界面跑通全流程，JSON 输出 + 退出码，**可被 AI 工具（Claude Code / DSH / Cursor 等）直接调用**；仅抓包需要管理员。
 - **4K 高 DPI 自适应（v2.1）**：按系统真实 DPI 缩放字体与界面，高分屏不再字小；1080p 下观感不变。
 
@@ -54,11 +58,13 @@ Windows **单文件绿色版**，双击即用，无需安装任何驱动 / 运�
 ```bash
 WushuangIPTV-CLI.exe info                                          # 环境总览（网卡/参考库/建议网卡）
 WushuangIPTV-CLI.exe verify --province 浙江 --carrier 电信 --out verified.json  # 载入参考库并实测验证
+WushuangIPTV-CLI.exe sweep --range 233.50.200.0/22 --out sweep.json   # 全段扫频发现参考库外频道（v2.2）
 WushuangIPTV-CLI.exe m3u --channels verified.json --outdir D:\iptv            # 生成 udp+http 双版 M3U
 ```
 
 - stdout 单个 JSON 结果、stderr JSONL 进度、退出码 0成功/1失败/2参数错误/3需管理员；
-- 频道 JSON 贯穿 load→verify→m3u→proxy/push；仅 `capture` 抓包需要管理员；
+- 频道 JSON 贯穿 load→verify/sweep→m3u→proxy/push；仅 `capture` 抓包需要管理员；
+- verify/sweep 默认并发 2（部分光猫限速 burst 加组，高并发易假失败；判死前低并发复核）；
 - 首次运行若弹 Windows 防火墙提示请点「允许访问」。
 
 完整命令参考：[docs/CLI使用说明.md](docs/CLI使用说明.md) · AI 工具入口：[AGENTS.md](AGENTS.md)
@@ -71,9 +77,9 @@ WushuangIPTV-CLI.exe m3u --channels verified.json --outdir D:\iptv            # 
 
 | 平台 | 版本 | 抓包 | 验证/M3U/转发 | 获取方式 |
 |---|---|---|---|---|
-| Windows 10 1809+ / 11 | **v2.1.0 正式** | ✅ pktmon（管理员） | ✅ | [Releases](../../releases) exe |
-| Linux x64 | v2.1.0-beta | ✅ tcpdump（sudo） | ✅ | CI 产物 / 源码 / `build_cli.sh` |
-| macOS Intel / Apple Silicon | v2.1.0-beta | ✅ tcpdump（sudo，系统自带） | ✅ | CI 产物 / 源码 / `build_cli.sh` |
+| Windows 10 1809+ / 11 | **v2.2.1 正式** | ✅ pktmon（管理员） | ✅ | [Releases](../../releases) exe |
+| Linux x64 | v2.2.1-beta | ✅ tcpdump（sudo） | ✅ | CI 产物 / 源码 / `build_cli.sh` |
+| macOS Intel / Apple Silicon | v2.2.1-beta | ✅ tcpdump（sudo，系统自带） | ✅ | CI 产物 / 源码 / `build_cli.sh` |
 | 鸿蒙PC（HarmonyOS NEXT，2in1） | v2.1.0-beta | ❌ 系统无第三方抓包权限 | ✅ 精简版 | DevEco 打开 `harmony/` 签名运行 |
 
 ### Linux / macOS 快速开始
@@ -92,7 +98,7 @@ pip install pyinstaller
 bash src/build_cli.sh && bash src/build.sh         # 产物在 dist/
 ```
 
-- CLI 协议与 Windows 完全一致（JSON 输出/退出码），`version` 显示 `2.1.0-beta` 并附 `beta_note` 声明；
+- CLI 协议与 Windows 完全一致（JSON 输出/退出码），`version` 显示 `2.2.1-beta` 并附 `beta_note` 声明；
 - NAS 推送：挂载目录或 `smb://` URL（smbclient）；WebDAV 不变；
 - macOS 未签名产物首次打开需**右键 → 打开**；WSL2 默认 NAT 收不到物理局域网组播（需镜像网络模式或真机）；
 - 完整差异与注意事项：**[docs/跨平台说明.md](docs/跨平台说明.md)**。
@@ -116,10 +122,17 @@ linux-x64 / macos-x64 / macos-arm64 / windows-x64 四平台自测 + 构建，产
 
 | 文件 | 说明 |
 |---|---|
-| [apk/WushuangTV.apk](apk/WushuangTV.apk) | 无双电视 · 电视版（约1.6M，安卓4.0+ 老电视可用，遥控器/数字选台/收藏） |
-| [apk/WushuangTV-Phone.apk](apk/WushuangTV-Phone.apk) | 无双电视 · 手机版（触屏、横屏全屏） |
+| [apk/WushuangTV.apk](apk/WushuangTV.apk) | 无双电视 · 电视版 **v1.1**（约1.6M，安卓4.0+ 老电视可用，遥控器/数字选台/收藏） |
+| [apk/WushuangTV-Phone.apk](apk/WushuangTV-Phone.apk) | 无双电视 · 手机版 **v1.1**（触屏、横屏全屏） |
 
-填入生成的播放列表地址即可观看。
+填入生成的播放列表地址即可观看。v1.1 直播缓冲抗抖动调优（WiFi 抖动时「正在连接」遮罩不再反复弹），同签名覆盖安装不丢设置。
+
+## 🐳 NAS Docker 鉴权转发（docker/）
+
+看直播想 7×24 不依赖 PC、或在外网看自家 IPTV：用 [docker/](docker/README.md) 的加固版组播→HTTP 转发
+（强制 token、频道白名单、并发上限、失败封禁、IGMP 续期、healthcheck；host 网络 + 只读挂载 + 脚本挂载热更新）。
+群晖部署含 **tv 开机任务依赖**（`sysctl force_igmp_version=2`，Docker host 网络共享内核参数，必须保留）与免 Docker root 任务兜底。
+**安全口径**：内置 `proxy` 仍仅限局域网、禁止公网映射；docker/ 为知情选择下的个人远程观看例外，token 即密码、播放列表 URL 勿外传，建议配合 HTTPS。
 
 ## 🔧 构建
 
@@ -154,11 +167,12 @@ bash src/build.sh       # GUI，产物 dist/WushuangIPTV-GUI（macOS 为 .app）
 - **请勿**将抓取的源公开分享、售卖、搭建公网服务供他人观看，或用于任何商业/非法目的；否则可能侵犯著作权/广播组织权并承担法律责任。
 - 请勿克隆机顶盒账号获取未付费业务。
 - 软件不后台联网、不上传任何数据；不收集任何个人信息。
-- 转发服务仅限局域网，禁止映射公网。
+- 转发服务仅限局域网，禁止映射公网；docker/ 鉴权版为个人远程观看的知情例外（见其 README 安全模型）。
 
 ## 📝 更新历史
 
-见 [CHANGELOG.md](CHANGELOG.md)（Windows v2.1.0：CLI 命令行模式 + 4K 高 DPI 修复；Linux/macOS/鸿蒙 v2.1.0-beta 测试版：跨平台移植，未做真机测试，仅供参考）。
+见 [CHANGELOG.md](CHANGELOG.md)（Windows v2.2.1：sweep 组播扫频 + 转发剥 RTP/IGMP 续期 + snooping 诊断 + 并发防假失败；
+v2.2.0：docker/ 鉴权转发 + 无双电视 APK v1.1；Linux/macOS/鸿蒙 v2.2.1-beta 测试版：跨平台移植，未做真机测试，仅供参考）。
 
 ## 📄 License
 
