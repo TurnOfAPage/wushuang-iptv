@@ -17,7 +17,7 @@ WushuangIPTV-CLI.exe m3u --channels verified.json --outdir ./out     # 生成 ud
 
 **频道文件贯穿全流程**：`load/capture/analyze/verify` 的结果 JSON 内含 `channels` 数组，直接作为下一步 `verify/m3u/proxy` 的 `--channels` 输入；也接受 `.m3u` 文件。
 
-完整子命令与参数：[docs/CLI使用说明.md](docs/CLI使用说明.md)；Linux/macOS 差异：[docs/跨平台说明.md](docs/跨平台说明.md)。
+完整子命令与参数：[CLI使用说明.md](docs/CLI使用说明.md)；Linux/macOS 差异：[跨平台说明.md](docs/跨平台说明.md)。
 
 ## 方式二：从源码运行（Python 3.10+，核心零第三方依赖，全平台）
 
@@ -37,6 +37,7 @@ python src/e2e_posix.py              # Linux/macOS 回环端到端冒烟（无�
 | `refdb info\|carriers\|update\|import` | 全国参考库（31省×4运营商） | 否 |
 | `load --province P --carrier C` | 载入候选频道（未实测） | 否 |
 | `verify` | 真实加组收流验证，自动命名/编码/分辨率 | 否 |
+| `sweep --range 233.50.200.0/22` | 组播全段扫频，发现参考库外频道 | 否 |
 | `capture --seconds 90` | pktmon/tcpdump 抓包并分析出频道候选 | **是**（Win 管理员 / Linux·macOS sudo） |
 | `analyze --pcap FILE` | 分析已有抓包（pcap/pcapng/etl） | 否 |
 | `m3u --channels F --outdir D` | 生成/合并 udp+http 播放列表 | 否 |
@@ -45,7 +46,7 @@ python src/e2e_posix.py              # Linux/macOS 回环端到端冒烟（无�
 
 ## 约束与注意（AI 必读）
 
-- **平台**：Windows 10 1809+ / Windows 11（pktmon 内置，v2.1.0 正式版）、Linux / macOS（tcpdump，**v2.1 测试版，未做真机测试，仅供参考**）、鸿蒙PC 精简版（`harmony/` ArkTS 工程，测试版，无抓包）。详见 [docs/跨平台说明.md](docs/跨平台说明.md) 与 [harmony/README.md](harmony/README.md)。
+- **平台**：Windows 10 1809+ / Windows 11（pktmon 内置，v2.2.0 正式版）、Linux / macOS（tcpdump，**v2.1 测试版，未做真机测试，仅供参考**）、鸿蒙PC 精简版（`harmony/` ArkTS 工程，测试版，无抓包）。详见 [跨平台说明.md](docs/跨平台说明.md) 与 [harmony/README.md](harmony/README.md)。
 - **网络前提**：验证频道需要有线网卡接入 IPTV 专网（搭线/桥接/路由器 IPTV 口，见 docs/使用说明.md）；`info` 的 `suggested_multicast_iface` 是建议网卡，可用 `--iface` 覆盖。WSL2 默认 NAT 收不到物理局域网组播，需镜像网络模式或真机。
 - **防火墙**：新 exe 首次运行可能弹 Windows 防火墙提示，需用户点「允许访问」，否则收不到组播流（表现为 verify 全部 `ok=false` 且 `bytes=0`）；macOS 应用防火墙同理点「允许」。
 - **参考库只是候选**：各地运营商随时调整组播地址，一切以 `verify` 实测为准。

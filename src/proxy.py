@@ -12,6 +12,66 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import m3u
 
 
+def strip_rtp(data):
+    """部分运营商 IPTV 组播为 RTP 封装（12 字节头 + 1316 字节 TS）；
+    转发前剥头，否则播放器失步 → 马赛克/疯狂缓冲。兼容裸 UDP-TS（首字节 0x47 直接放行）。"""
+    if len(data) >= 12 and (data[0] & 0xC0) == 0x80:
+        cc = data[0] & 0x0F
+        off = 12 + 4 * cc
+        if (data[0] >> 4) & 1 and len(data) >= off + 4:
+            off += 4 + int.from_bytes(data[off + 2:off + 4], 'big') * 4
+        if len(data) > off and data[off] == 0x47:
+            return data[off:]
+    return data
+
+
+def _csum(b):
+    if len(b) % 2:
+        b += b'\x00'
+    s = sum(struct.unpack('!%dH' % (len(b) // 2), b))
+    while s >> 16:
+        s = (s & 0xffff) + (s >> 16)
+    return (~s) & 0xffff
+
+
+def _igmp_report(group, src):
+    """IGMPv2 membership report 完整 IP 包（带 Router Alert 选项）。"""
+    g = socket.inet_aton(group)
+    ig = struct.pack('!BBH4s', 0x16, 0, 0, g)
+    ig = struct.pack('!BBH4s', 0x16, 0, _csum(ig), g)
+    hdr = struct.pack('!BBHHHBBH4s4s', 0x46, 0xc0, 32, 0, 0, 1,
+                      socket.IPPROTO_IGMP, 0, socket.inet_aton(src), g)
+    hdr += b'\x94\x04\x00\x00'
+    return hdr[:10] + struct.pack('!H', _csum(hdr)) + hdr[12:] + ig
+
+
+def _refresh_loop(group, iface, stop_evt, sock, mreq, interval=60):
+    """光猫/交换机不发 IGMP 查询的网络里，内核加组会在设备侧老化（约 4 分钟）断流；
+    周期补发报告续期。raw socket 需管理员/root；不可用时回退流 socket drop/re-add。"""
+    rs = None
+    try:
+        rs = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_IGMP)
+        rs.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
+        rs.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(iface))
+    except OSError:
+        rs = None
+    pkt = _igmp_report(group, iface) if rs else None
+    while not stop_evt.wait(interval):
+        if rs is not None:
+            try:
+                rs.sendto(pkt, (group, 0))
+            except OSError:
+                pass
+        else:
+            try:
+                sock.setsockopt(socket.IPPROTO_IP, socket.IP_DROP_MEMBERSHIP, mreq)
+                sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+            except OSError:
+                pass
+    if rs is not None:
+        rs.close()
+
+
 class ProxyServer:
     def __init__(self, iface_ip, port=9999, channels_cb=None):
         self.iface_ip = iface_ip
@@ -111,6 +171,10 @@ class ProxyServer:
                 key = '%s:%d' % (group, port)
                 with outer.lock:
                     outer.active[key] = outer.active.get(key, 0) + 1
+                stop_evt = threading.Event()
+                threading.Thread(target=_refresh_loop,
+                                 args=(group, outer.iface_ip, stop_evt, s, mreq),
+                                 daemon=True).start()
                 self.send_response(200)
                 self.send_header('Content-Type', 'video/MP2T')
                 self.send_header('Connection', 'close')
@@ -122,10 +186,11 @@ class ProxyServer:
                             data, _ = s.recvfrom(65535)
                         except socket.timeout:
                             break
-                        self.wfile.write(data)
+                        self.wfile.write(strip_rtp(data))
                 except (BrokenPipeError, ConnectionResetError, OSError):
                     pass
                 finally:
+                    stop_evt.set()
                     with outer.lock:
                         outer.active[key] = max(0, outer.active.get(key, 1) - 1)
                         if outer.active[key] == 0:

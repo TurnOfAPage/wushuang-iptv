@@ -69,6 +69,23 @@ WushuangIPTV-CLI.exe verify --group 233.50.201.118 --port 5140                  
 
 结果含每频道 `ok/video/audio/res/sdt_name`，实测成功自动规范化命名（CCTV-1 HD → CCTV1）。
 
+### sweep — 组播全段扫频（发现参考库外频道，不需管理员）
+```
+WushuangIPTV-CLI.exe sweep --range 233.50.200.0/22 --port 5140 --out sweep.json
+WushuangIPTV-CLI.exe sweep --range 233.50.200.0-233.50.203.255,231.10.23.0/24 --concurrency 8 --timeout 3 --out sweep.json
+```
+| 参数 | 默认 | 说明 |
+|---|---|---|
+| `--range` | 必填 | CIDR / 起-止 / 单地址，逗号分隔多段；自动排除 224.0.0.x 协议噪声；单段上限 65536 地址 |
+| `--port` | 5140 | 扫频端口 |
+| `--timeout` | 3 | 单地址收流超时秒数 |
+| `--concurrency` | 8 | 并发加组数 |
+| `--iface` / `--limit` | 自动 / 0 | 同 verify |
+
+逐个真实加组收流：有流即候选，SDT 台名自动命名（参考库收录的用参考库名）。
+适用：**抓包 0 结果但电视能看**（IGMP snooping 定向转发）、参考库收录不全、运营商改地址后普查。
+结果 JSON 与 verify 同构，可直接接 `m3u` / `proxy`。实测案例：某省电信 /22 + /24 共 1280 地址扫出 313 个有流频道，其中 132 个参考库未收录。
+
 ### capture — 抓包并分析（Windows 需管理员，Linux/macOS 需 sudo）
 ```
 WushuangIPTV-CLI.exe capture --seconds 90 --out channels.json
@@ -76,6 +93,7 @@ sudo ./WushuangIPTV-CLI capture --seconds 90 --iface eth0 --out channels.json   
 ```
 后端：Windows 内置 pktmon；Linux/macOS 用 tcpdump（Linux 需 `sudo apt install tcpdump`，macOS 自带；Linux 缺省抓全部网卡，macOS 缺省选建议有线口，`--iface 设备名或IP` 可指定）。
 非管理员/root 运行返回退出码 3 + JSON 错误提示。抓包期间请让机顶盒开机并逐个换台（每频道停 3~5 秒）。`--keep-pcap` 保留抓包文件；`--workdir` 指定临时目录。结果含频道候选 + 流统计 + 机顶盒信息（**含账号，分享前脱敏**）。
+**0 候选时结果附 `hint`**：提示 IGMP snooping 定向转发场景（机顶盒能看但被动抓包不可见），指引改走 `verify` / `sweep` 主动加组路线。
 
 ### analyze — 分析已有抓包文件（不需管理员）
 ```

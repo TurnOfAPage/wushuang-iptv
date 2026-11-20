@@ -188,7 +188,7 @@ def cmd_info(args):
                   suggested_udpxy_host=netutil.lan_ip_for_udpxy(ifaces),
                   refdb=channeldb.db_info(),
                   commands=['info', 'ifaces', 'refdb info|carriers|update|import',
-                            'load', 'verify', 'capture', 'analyze', 'm3u',
+                            'load', 'verify', 'sweep', 'capture', 'analyze', 'm3u',
                             'proxy', 'push'])
 
 
@@ -251,6 +251,10 @@ def cmd_verify(args):
         raise ValueError('频道来源三选一：--channels FILE | --province P --carrier C | --group G --port P')
     if not chans:
         raise ValueError('频道列表为空')
+    return _verify_run(chans, args)
+
+
+def _verify_run(chans, args, command='verify'):
     if args.limit and args.limit > 0:
         chans = chans[:args.limit]
     iface = args.iface or netutil.pick_multicast_iface(netutil.list_interfaces())
@@ -269,8 +273,47 @@ def cmd_verify(args):
     verify.verify_batch(chans, iface, concurrency=args.concurrency, timeout=args.timeout,
                         progress_cb=progress)
     ok_n = sum(1 for c in chans if c.get('ok'))
-    return result('verify', iface=iface, total=len(chans), ok_count=ok_n,
+    return result(command, iface=iface, total=len(chans), ok_count=ok_n,
                   failed_count=len(chans) - ok_n, channels=chans)
+
+
+def cmd_sweep(args):
+    """组播全段扫频：逐个真实加组收流，发现参考库未收录的频道（含试看/轮播/地方台）。"""
+    import ipaddress
+    groups = []
+    for part in (args.range or '').split(','):
+        part = part.strip()
+        if not part:
+            continue
+        if '/' in part:
+            net = ipaddress.ip_network(part, strict=False)
+            lo, hi = int(net.network_address), int(net.broadcast_address)
+        elif '-' in part:
+            a, b = part.split('-', 1)
+            lo = int(ipaddress.ip_address(a.strip()))
+            hi = int(ipaddress.ip_address(b.strip()))
+        else:
+            lo = hi = int(ipaddress.ip_address(part))
+        if hi < lo or hi - lo > 65535:
+            raise ValueError('扫频范围非法或单段超过 65536 地址: %s' % part)
+        groups.extend(str(ipaddress.ip_address(i)) for i in range(lo, hi + 1))
+    seen, chans = set(), []
+    for g in groups:
+        if not (224 <= int(g.split('.')[0]) <= 239) or g.startswith('224.0.0.'):
+            continue
+        if (g, args.port) in seen:
+            continue
+        seen.add((g, args.port))
+        ref = channeldb.lookup(g, args.port)
+        chans.append({'name': ref['name'] if ref else '未知频道(%s)' % g,
+                      'group': g, 'port': args.port,
+                      'cat': (ref.get('cat') if ref else '') or '未分类',
+                      'ok': False, 'video': None, 'audio': None, 'res': None,
+                      'sdt_name': '', 'source': 'sweep'})
+    if not chans:
+        raise ValueError('扫频范围为空（需组播 224-239 段，自动排除 224.0.0.x 协议噪声）')
+    log('sweep_start', total=len(chans), port=args.port)
+    return _verify_run(chans, args, command='sweep')
 
 
 def cmd_capture(args):
@@ -308,6 +351,11 @@ def cmd_capture(args):
     if not ok:
         return result('capture', ok=False, error=pcap)
     res = _analyze_to_result('capture', pcap)
+    if not res.get('channels'):
+        res['hint'] = ('抓包未发现频道候选。若机顶盒此时能正常观看，多为光猫/交换机 IGMP snooping '
+                       '定向转发（组播只发给已加组端口，被动抓包不可见）。改用主动加组路线：'
+                       'verify --province P --carrier C 实测参考库，或 sweep --range <组播段> '
+                       '全段扫频发现参考库外频道。')
     if args.keep_pcap:
         res['pcap'] = pcap
     pm.cleanup(keep_pcap=args.keep_pcap)
@@ -450,6 +498,17 @@ def build_parser():
     p.add_argument('--limit', type=int, default=0, help='只验证前 N 个频道（调试用）')
     common(p)
     p.set_defaults(func=cmd_verify)
+
+    p = sub.add_parser('sweep', help='组播全段扫频：逐个加组实测，发现参考库外频道（不需管理员）')
+    p.add_argument('--range', required=True,
+                   help='组播范围：CIDR/起-止/单地址，逗号分隔多段，如 233.50.200.0/22,231.10.23.0/24')
+    p.add_argument('--port', type=int, default=5140, help='扫频端口，默认5140')
+    p.add_argument('--iface', help='组播网卡 IP（缺省自动选有线口）')
+    p.add_argument('--timeout', type=float, default=3.0, help='单地址收流超时秒数，默认3')
+    p.add_argument('--concurrency', type=int, default=8, help='并发数，默认8')
+    p.add_argument('--limit', type=int, default=0, help='只扫前 N 个地址（调试用）')
+    common(p)
+    p.set_defaults(func=cmd_sweep)
 
     p = sub.add_parser('capture', help='pktmon/tcpdump 抓包并分析出频道候选（Windows 需管理员，Linux/macOS 需 sudo）')
     p.add_argument('--seconds', type=int, default=90, help='抓包时长秒数，默认90；期间请让机顶盒换台')

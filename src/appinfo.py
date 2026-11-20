@@ -3,7 +3,7 @@
 import sys
 
 APP_NAME = '无双IPTV抓源工具'
-APP_VER = '2.1.0'
+APP_VER = '2.2.0'
 # Linux/macOS 移植版为测试版（未做真机测试，仅供参考）；Windows 保持正式版号不变
 IS_POSIX = sys.platform != 'win32'
 APP_VER_DISPLAY = APP_VER + '-beta' if IS_POSIX else APP_VER

@@ -1,0 +1,24 @@
+services:
+  iptv-wan:
+    build: .
+    image: iptv-wan:latest
+    container_name: iptv-wan
+    # 组播加组必须用 host 网络（bridge 网络收不到 LAN 组播）
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      IPTV_TOKEN: "${IPTV_TOKEN:?请在 .env 设置随机 token}"
+      IPTV_IFACE: "${IPTV_IFACE:?请在 .env 设置 NAS 有线网口 IP}"
+      IPTV_PORT: "${IPTV_PORT:-19999}"
+      IPTV_M3U: "/data/iptv.m3u"
+      IPTV_MAX_TOTAL: "${IPTV_MAX_TOTAL:-8}"
+      IPTV_REFRESH_SECS: "${IPTV_REFRESH_SECS:-60}"
+    volumes:
+      - ${IPTV_DIR:-/volume1/iptv}:/data:ro
+      # 脚本直接挂载：更新只需上传文件+重启容器，无需重新构建镜像
+      - ${IPTV_DIR:-/volume1/iptv}/wan/iptv_wan_proxy.py:/app/iptv_wan_proxy.py:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:${IPTV_PORT:-19999}/',timeout=5)"]
+      interval: 30s
+      timeout: 8s
+      retries: 3
