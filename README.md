@@ -122,10 +122,11 @@ linux-x64 / macos-x64 / macos-arm64 / windows-x64 四平台自测 + 构建，产
 
 | 文件 | 说明 |
 |---|---|
-| [apk/WushuangTV.apk](apk/WushuangTV.apk) | 无双电视 · 电视版 **v1.1**（约1.6M，安卓4.0+ 老电视可用，遥控器/数字选台/收藏） |
-| [apk/WushuangTV-Phone.apk](apk/WushuangTV-Phone.apk) | 无双电视 · 手机版 **v1.1**（触屏、横屏全屏） |
+| [apk/WushuangTV.apk](apk/WushuangTV.apk) | 无双电视 · 电视版 **v1.2**（约1.6M，安卓4.0+ 老电视/投影仪可用，遥控器/数字选台/收藏） |
+| [apk/WushuangTV-Phone.apk](apk/WushuangTV-Phone.apk) | 无双电视 · 手机版 **v1.2**（触屏、横屏全屏） |
 
-填入生成的播放列表地址即可观看。v1.1 直播缓冲抗抖动调优（WiFi 抖动时「正在连接」遮罩不再反复弹），同签名覆盖安装不丢设置。
+**发行版不内置任何私人播放地址**：首次运行在设置里填自己的 M3U 地址即可观看（个人定制构建可固化自家 NAS 转发地址）。
+v1.1 起直播缓冲抗抖动调优（WiFi 抖动时「正在连接」遮罩不再反复弹），同签名覆盖安装不丢设置。
 
 ## 🐳 NAS Docker 鉴权转发（docker/）
 
