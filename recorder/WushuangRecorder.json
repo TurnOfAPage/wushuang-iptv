@@ -1,0 +1,15 @@
+{
+ "channels": [],
+ "iface": "",
+ "record_dir": "",
+ "proxy_port": 9999,
+ "quota_gb": 100,
+ "pad_before": 60,
+ "pad_after": 120,
+ "max_concurrent": 2,
+ "missed": "skip",
+ "epg_url": "",
+ "epg_update_on_start": false,
+ "last_province": "",
+ "last_carrier": ""
+}

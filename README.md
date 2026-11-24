@@ -2,10 +2,28 @@
 
 > **作者：B站-锤无双** · **QQ群：170621740** · [📺 视频教程](https://www.bilibili.com/video/BV17SWk6VEPZ/) · [作者主页](https://www.bilibili.com/video/BV17SWk6VEPZ/)
 
+> ⚠ **版权提示：本工具（含录像工具）仅供个人研究学习使用，请在 24 小时内删除录制文件。
+> 传播录制文件会导致版权风险，该风险与本软件无关。** 录制内容版权归播出方所有；本工具不上传、不分发任何录制文件。
+
 让家里机顶盒退役：抓取 / 验证自家 IPTV 组播直播源，一键生成 M3U 播放列表，全家电视、手机、平板都能看直播。
 Windows **单文件绿色版**，双击即用，无需安装任何驱动 / 运行库。
 **v2.2 新增 `sweep` 组播全段扫频**（发现参考库外频道）、**转发剥 RTP 头 + IGMP 周期续期**、**抓包空结果 snooping 诊断**、
 **NAS Docker 鉴权转发（docker/）**；配套无双电视 APK 升级 **v1.1**（缓冲抗抖动）。详见 [更新说明](CHANGELOG.md)。
+
+## 🆕 最新更新（2026-11-24）：独立产品「无双IPTV录像工具」v1.0.0
+
+把免鉴权收到的组播直播流**录下来事后点播**（本地 DVR）：即时录 / EPG 节目预约 / 断流续录 / 重启恢复 /
+配额自动清理（默认 100G）/ 录像 HTTP Range 点播拖动 / **内置 Web 管理页**（浏览器开始·停止·预约·删除）。
+**不做运营商真回看**（需机顶盒鉴权）；只能录开始之后的内容，不能回溯过去。主工具功能零改动，不需要录像的用户无需安装。
+
+- **Windows 版**：[`release/recorder-v1.0.0/无双IPTV录像工具-win.zip`](release/recorder-v1.0.0/) ——
+  解压后双击 `无双IPTV录像工具.bat`（或已装 Python 时 `.pyw`，无黑窗）；**开着火绒等杀软也能录**
+  （入口走系统签名进程信任链；默认录像目录=系统下载文件夹，可自定义）。
+- **NAS Docker 版**：[`recorder/docker/`](recorder/docker/)（compose host 网络 + 代码热更新挂载）+
+  离线镜像 [`release/recorder-v1.0.0/iptv-recorder-1.0.0.tar`](release/recorder-v1.0.0/)；
+  群晖 DS918+ 真机实测：真流录制 / 局域网点播 / 预约 / 重启恢复全过。
+- 文档：[recorder/README.md](recorder/README.md) · [CLI 使用说明](recorder/CLI使用说明.md) ·
+  [Docker 部署](recorder/docker/README.md) · [设计文档](docs/录像功能设计.md) · [更新说明](CHANGELOG.md)。
 
 > ### 🧪 跨平台测试版（v2.2.1-beta）
 > **Linux / macOS / 鸿蒙PC 版均为测试版：未做真机测试，仅供参考。**

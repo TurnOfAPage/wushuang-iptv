@@ -2,6 +2,7 @@
 """M3U 读写/合并/排序，支持 udp:// rtp:// 与 udpxy(HTTP) 三种格式。"""
 import os
 import re
+from datetime import datetime
 
 CAT_ORDER = ['央视高清', '央视', '卫视高清', '卫视', '4K超高清', '地方高清', '地方',
              '国际标清', '影视剧场', '高清剧场', '广播频道', '电视购物', '付费',
@@ -127,3 +128,25 @@ def merge_channels(old, new):
                 merged[x] = c[x]
         out[k] = merged
     return list(out.values())
+
+
+def recordings_m3u(recordings, host, port):
+    """录像 VOD 播放列表（与直播列表分开）：EXTINF 用真实时长（VOD 语义），
+    标题=频道名+EPG节目名+开播时间，按开始时间倒序。供 /recordings.m3u 与导出共用。"""
+    lines = ['#EXTM3U']
+    recs = [r for r in recordings if r.get('status') in ('done', 'partial', 'recording')]
+    recs.sort(key=lambda r: r.get('start') or '', reverse=True)
+    for r in recs:
+        name = r.get('name') or r.get('id', '')
+        title = name
+        if r.get('epg_title'):
+            title += ' ' + r['epg_title']
+        try:
+            st = datetime.fromisoformat(r.get('start', ''))
+            title += ' (%s)' % st.strftime('%m-%d %H:%M')
+        except (ValueError, TypeError):
+            pass
+        dur = int(r.get('duration') or 0)
+        lines.append('#EXTINF:%d tvg-name="%s" group-title="录像",%s' % (dur, name, title))
+        lines.append('http://%s:%d/vod/%s' % (host, port, r.get('id', '')))
+    return '\n'.join(lines) + '\n'

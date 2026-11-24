@@ -1,0 +1,33 @@
+services:
+  iptv-recorder:
+    build: .
+    image: iptv-recorder:1.0.0
+    container_name: iptv-recorder
+    # 组播加组必须用 host 网络（bridge 收不到 LAN 组播）——与 iptv-wan 同理
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      # 容器时区必须与宿主机/NAS 一致（预约时间按本地时间解释；alpine 默认 UTC 会差 8 小时）
+      TZ: "${TZ:-Asia/Shanghai}"
+      IPTV_IFACE: "${IPTV_IFACE:-192.168.1.100}"
+      IPTV_PORT: "${IPTV_PORT:-9999}"
+      IPTV_CHANNELS: "${IPTV_CHANNELS:-/data/zj-telecom-verified.m3u}"
+      IPTV_RECORD_DIR: "/rec"
+      IPTV_QUOTA_GB: "${IPTV_QUOTA_GB:-100}"
+      IPTV_MAX_CONCURRENT: "${IPTV_MAX_CONCURRENT:-2}"
+      IPTV_PAD_BEFORE: "${IPTV_PAD_BEFORE:-60}"
+      IPTV_PAD_AFTER: "${IPTV_PAD_AFTER:-120}"
+      IPTV_MISSED: "${IPTV_MISSED:-skip}"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,os;urllib.request.urlopen('http://127.0.0.1:%s/status'%os.environ.get('IPTV_PORT','9999'),timeout=5)\""]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+    volumes:
+      # 频道文件目录（只读）——与 iptv-wan 共用同一份 verified/m3u
+      - ${IPTV_DATA_DIR:-/volume1/iptv}:/data:ro
+      # 录像目录（读写）：ts 文件 + records.json 计划 + recordings.json 索引 + epg 缓存
+      - ${IPTV_RECORD_DIR:-/volume1/iptv/rec}:/rec
+      # 代码热更新挂载：以后更新只需上传文件+重启容器，无需重建镜像（与 wan 同模式）
+      - ./src:/app/src:ro
+      - ./recorder:/app/recorder:ro

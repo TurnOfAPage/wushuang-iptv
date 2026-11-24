@@ -216,8 +216,13 @@ def _linux_interfaces():
             })
         if ifaces:
             return ifaces
-    # 回退：ifconfig（老系统/精简系统无 iproute2 时）
-    return _parse_ifconfig(wifi_probe=_linux_is_wifi)
+    # 回退：ifconfig（老系统/精简系统/alpine 容器无 iproute2 时）
+    ifaces = _parse_ifconfig(wifi_probe=_linux_is_wifi, skip_prefix=_LINUX_SKIP_PREFIX)
+    gw_dev, gw = _linux_default_route()
+    for i in ifaces:
+        if i['name'] == gw_dev:
+            i['gateway'] = gw
+    return ifaces
 
 
 # ---------------- macOS ----------------
@@ -273,7 +278,8 @@ def _parse_ifconfig(wifi_probe=None, skip_prefix=()):
     cur = None
     for line in out.splitlines():
         if line and not line[0].isspace():
-            name = line.split(':')[0].strip()
+            # busybox ifconfig 头无冒号（"eth0      Link encap:Ethernet ..."），取首列
+            name = line.split(':')[0].split()[0].strip()
             if not name or name.startswith(skip_prefix) or name == 'lo':
                 cur = None
                 continue
@@ -287,12 +293,15 @@ def _parse_ifconfig(wifi_probe=None, skip_prefix=()):
             continue
         if cur is None:
             continue
-        m = re.search(r'(?:ether|lladdr)\s+([0-9a-fA-F:]{17})', line)
+        m = re.search(r'(?:ether|lladdr|HWaddr)\s+([0-9a-fA-F:]{17})', line)
         if m and not cur['mac']:
             cur['mac'] = m.group(1).upper()
-        m = re.search(r'inet\s+([0-9.]+)', line)
+        m = re.search(r'inet\s+(?:addr:)?([0-9.]+)', line)
         if m and not cur['ipv4']:
             cur['ipv4'] = m.group(1)
+        # busybox ifconfig（alpine 容器）：UP 标志独立成行，无 flags=<...>
+        if re.search(r'\bUP\b', line):
+            cur['_up'] = True
     out2 = []
     for i in ifaces:
         up = i.pop('_up', True)

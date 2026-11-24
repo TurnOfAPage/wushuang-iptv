@@ -96,3 +96,6 @@ DSM 控制面板 → 登录门户 → 反向代理：`https://<域名>:19999` �
 
 看直播不需要 Tvheadend（多一层订阅/扫描反而引入并发与卡顿问题）；EPG/录像/海报墙需求再启用 Tvheadend，
 并让其 IPTV 网络指向本服务或内置 proxy 的 HTTP 列表、限制最大输入流数避免扫描打满转发。
+轻量「预约录像+局域网点播」需求可直接用独立产品**无双IPTV录像工具**（仓库 `recorder/`，
+`WushuangIPTV-Recorder-CLI proxy --record-dir ...` 一个常驻服务搞定，零第三方依赖、不需管理员），
+重度 DVR（海报墙/系列录制）仍推荐 Tvheadend。

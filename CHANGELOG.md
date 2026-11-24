@@ -1,5 +1,57 @@
 # 更新说明
 
+## 无双IPTV录像工具 v1.0.0（2026-11-23，独立新产品）
+
+> **独立发行**：录像功能做成单独产品（`recorder/` 目录，独立版本号），与主工具共享 `src/` 核心模块；
+> 主工具「无双IPTV抓源工具」v2.2.1 功能与行为**零改动**，不需要录像的用户无需安装本工具。
+> 决策背景：用户呼声最高的「回看」经技术评估——运营商真回看需克隆机顶盒鉴权、逐省适配、隐私/合规风险大，**搁置**；
+> 改做本地录像（DVR）：把免鉴权收到的组播直播流录下来事后点播，常开设备+预约覆盖「错过直播补看」核心诉求。
+> **只能录开始之后的内容，不能回溯过去**（宣传口径务必注明）。
+
+### 🆕 录像核心（src/record.py · epg.py，GUI/CLI 共用）
+
+- **即时录**：`record start` 前台录制（时长精确，不吃预约余量），Ctrl+C 优雅收尾；剥 RTP、IGMP 60s 续期、断流 6s 自动重加组续录。
+- **预约录像**：手动时间段 或 公共 XMLTV 节目单点选（epg.pw/51zmt/自定义 URL，**仅用户主动更新**）；提前 60s/延后 120s 余量防提前/拖堂；同频道重叠拒绝。
+- **重启恢复**：计划/索引原子落盘；在录续录剩余时段（分段并入同一索引），过期计划标 missed 或 `--missed remainder` 续录。
+- **磁盘治理**：启动预检+录制中周期检查（余量 < max(2GiB, 10分钟×码率) 优雅停止）；配额 LRU 自动清理（绝不删进行中/待录）；单文件超 4GiB/2h 自动分段。
+- **索引自愈**：recordings.json 损坏时从 ts/ 文件名重建基础索引。
+- 全程**不需要管理员/root**（IGMP raw socket 不可用自动回退 drop/re-add，与 proxy 一致）。
+
+### 🆕 录像点播（proxy.py 向后兼容扩展 + m3u.py）
+
+- `ProxyServer(record_mgr=...)` 可选参数：`/vod/<rid>`（Range 206/416/HEAD、多分段虚拟拼接、边录边看、rid 白名单防路径穿越）、`/recordings.m3u`（真实时长 VOD 列表）、`/recordings.json`、`/status` 扩展。
+- **缺省不传 record_mgr 时行为与旧版完全一致**（主工具零影响，selftest 回归通过）。
+
+### 🆕 独立 CLI + GUI（recorder/）
+
+- CLI `WushuangIPTV-Recorder-CLI`：info / record start|list|add|cancel|delete / epg update|show|map / proxy（常驻=转发+调度+点播）；输出协议与主工具一致（stdout 单 JSON、stderr JSONL、退出码 0/1/2、--out）。
+- GUI `无双IPTV录像工具.exe`：① 频道与录制（导入主工具 verified.json/M3U/参考库自验证、⏺录制选中）② 录像管理（EPG 更新、预约对话框手动/节目点选、配额条、删除/停止/复制点播地址）③ 常驻服务 ④ 帮助。
+- NAS 7×24：`proxy --channels verified.json --record-dir /volume1/iptv/rec` 一条命令；群晖 force_igmp_version=2 开机任务依赖见 docker/README.md。
+- 构建脚本 recorder/build*.ps1|.sh；产物 dist/ 下两个 exe（单文件、零第三方依赖、内嵌参考库）。
+
+### 🐳 NAS Docker 部署包（2026-11-24 补充）
+
+- `recorder/docker/`：Dockerfile（python:3.12-alpine，零第三方依赖）+ compose（**host 网络**、频道目录只读挂载、录像目录读写挂载、**代码热更新挂载**——与 iptv-wan 同模式，更新=上传文件+重启）+ `.env.example` + 部署 README（Container Manager 项目 / 离线镜像导入 / 免 Docker 计划任务三路线）。
+- `recorder/build_docker.ps1|.sh`：打包自包含上传目录 `dist/docker-recorder/`；本机 Docker 可用时构建 `iptv-recorder:1.0.0` 并 `docker save` 导出 `dist/iptv-recorder-1.0.0.tar`（NAS 拉不动 Docker Hub 时离线导入）。
+- 与 iptv-wan（19999 公网鉴权）共存互不影响；本服务 9999 **仅限局域网，禁止映射公网**；依赖既有 `force_igmp_version=2` 开机任务。
+- 容器级实测修复三处：**TZ 默认 Asia/Shanghai**（alpine 默认 UTC 会使预约偏移 8 小时）、entrypoint.sh（无参=常驻 proxy / 有参透传 CLI，`docker run <镜像> info` 可用）、**SIGTERM 优雅收尾**（docker stop 时在录录像标 partial 落盘）；`docker exec` 管理命令自动读容器 `IPTV_*` 环境变量；docker.io 镜像源失效时 ECR 公共镜像兜底（实测有效）。
+- 容器冒烟通过：/status、/recordings.m3u、跨进程预约拾取（exec add → 主进程到点启动）、docker stop 优雅收尾索引落盘。
+- **NAS 真机部署实测通过**（Synology DS918+ / DSM 7 / Docker 24 + Compose v2.20）：上传部署包 + 离线镜像 load + compose 启动，与 iptv-wan 共存；真流实录 10s≈10MB 零断流；局域网 /recordings.m3u + /vod 206 点播可解码 h264「CCTV-1 HD」；预约拾取、跨进程取消、重启恢复、EPG 直更（70 频道映射）与按节目名预约全过。
+- 真机过程修复：busybox ifconfig 解析（alpine 容器网卡枚举：`inet addr:`、UP 独立行、`Link encap` 头、docker 桥过滤、网关回退解析）；跨进程 recordings.json 热重载与 cancel 信号（tick 合并不再覆盖磁盘 canceled）；**EPG 内置源更新**（epg.pw 旧 `/api/epg.xml` 已 404 → 实测 `/xmltv/epg_CN.xml.gz` 可用，旧源保留兜底）。
+- **内置 Web 管理页**（`src/webui.py`，2026-11-24）：浏览器 `http://<服务IP>:9999/` 开始/停止录制、手动/按节目预约、取消、删除/播放录像、更新节目单、实时进度与配额；纯标准库内嵌单页（零外部资源/零新增依赖），JSON API `/api/state|programs|record/start|record/stop|schedule/add|schedule/cancel|recording/delete|epg/update`；仅 `record_mgr` 启用时生效，主工具 `/` 仍返回 status JSON（零变化）；selftest 54/54；NAS 真机页面+API 真流录停实测通过。
+- **Web 设置区与布局改版 + Windows GUI 同款设置**（2026-11-24 二轮）：页面区块顺序改为 **状态与设置 → 预约录像 → 录像 → 频道与录制**；顶部设置区含**容量上限（全链路默认 20→100G）**、**GB/小时备注**（实测均值+经验值：标清 1~2/高清 3~4/4K 15~22）、**保存文件夹选择**；设置持久化 `base_dir/settings.json`（`record.save_settings`，Docker 下锚定挂载根，重启自动读取），换文件夹即时重建管理器（在录时拒绝）；播放兼容备注加 **KmPlayer**；Windows GUI ②页顶部同款「状态与设置」区（配额/目录/浏览/应用/备注）；selftest **61/61**；NAS 真机顺序/设置 API/100G 持久化实测通过。
+- **Windows 版改文件夹版（onedir）+ 默认录像目录=系统下载文件夹**（2026-11-24 三轮，用户报障）：单文件 exe 启动报「Could not create temporary directory!」根因＝**火绒等安全软件拦截未签名 exe 向系统临时目录解包**（实测作者旧单文件 exe 同报、改 TMP 到 D 盘即好；签名进程 python/cmd 不受影响）→ Windows 构建改 `--onedir`（无解包动作天然免疫），产物 `dist/无双IPTV录像工具/`、`dist/WushuangIPTV-Recorder-CLI/` + 同名 `-win.zip`；**默认录像目录改为系统「下载」文件夹/无双IPTV录像**（Windows 经 SHGetKnownFolderPath 取真实 Downloads 含 OneDrive 重定向；`record.default_record_dir`），Web/GUI/CLI `--record-dir` 均可自定义；selftest 62/62。
+- **版权显著声明 + 保护目录拒绝写入修复 + 帮助页去按钮**（2026-11-24 四轮）：全界面显著声明「**本工具仅供个人研究学习使用，请在 24 小时内删除录制文件。传播录制文件会导致版权风险，该风险与本软件无关**」（GUI 窗口底部常驻红字＋帮助页首节、Web 页头红色横幅、CLI 结果 copyright_note、各文档首行）；修复「点确定不录制」静默失败：根因＝火绒文档/勒索防护拒绝未信任 exe 写 Downloads（PermissionError WinError5 被 noconsole 吞掉）→ `record.dir_writable` 启动探测自动回退可写目录并提示、手动录制/改目录拒绝写入显式弹窗、RecordManager 建目录拒绝时带指引报错；帮助页移除「打开视频教程/开源仓库」按钮。
+- **Windows 发行包改「信任进程链入口 + 签名 Python 运行时」**（2026-11-24 五轮，用户硬要求：杀软开着也要能录、默认必须下载文件夹）：实测火绒按**进程链+安装路径**信任（未签名 exe 的子进程即使签名也被拒；复制/嵌入式 python 离开安装路径也被拒）→ Windows 不再发行 exe 入口，改 **纯 ASCII 的 `无双IPTV录像工具.vbs` / `WushuangIPTV-Recorder-CLI.bat`**（wscript/cmd → py/已安装 Python 全信任链；无安装 Python 回退 bundled 官方签名运行时+tkinter overlay）；`recorder/build_win.ps1` 组装；**本机带火绒实测：默认下载目录真流录制 4s=4.35MB 零断流、GUI 冒烟通过**；入口脚本纯 ASCII（WSH/cmd 按 ANSI 解析，UTF-8 中文注释吞行曾致双击报错，已修）。
+- 滚动时移/HLS 仍属 P3 另行设计；Docker 集成之「部署」部分至此落地。
+
+### ✅ 验证
+
+- 独立自测 **42/42**（合成 TS/假 socket/假时钟/XMLTV + HTTP Range 回环 + 主工具兼容对照）；GUI smoke 通过。
+- **真实网络端到端通过**（浙江电信 CCTV1 233.50.201.118:5140）：实录 5s=4.9MB 零断流 → 常驻服务 → /recordings.m3u → /vod 206 Range → TS 解析 h264/mp2「CCTV-1 HD」；CLI exe 与 GUI exe 构建并验证（exe 首 run 需点防火墙「允许」，与主工具一致）。
+- 主工具回归：selftest 47/48（唯一失败为**预先存在**的外部 refdb.json 数据问题「CCTV1 实测可用」，与本次改动无关）、GUI smoke 通过。
+- 设计文档：docs/录像功能设计.md（P1+P2 已实现；P3 滚动时移/HLS/Docker 集成另行设计）。
+
 ## v2.2.1（2026-11-20 夜）
 
 ### 🐛 验证/扫频默认并发下调（防假失败）

@@ -2,14 +2,21 @@
 """组播 → HTTP 单播转发服务（udpxy 等价物，源自今日实测的 mcast_proxy.py）。
 /playlist.m3u 动态输出 HTTP 版列表；/udp/<组>:<端口> 转发单频道；/status 查看活跃流。
 仅限局域网使用，禁止映射公网。
+
+可选 record_mgr（record.RecordManager）：启用录像点播扩展（独立录像产品使用，
+缺省 None 时行为与旧版完全一致）：/vod/<rid>（Range 拖动）、/recordings.m3u、
+/recordings.json。
 """
 import json
+import os
+import re
 import socket
 import struct
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import m3u
+import webui
 
 
 def strip_rtp(data):
@@ -73,10 +80,11 @@ def _refresh_loop(group, iface, stop_evt, sock, mreq, interval=60):
 
 
 class ProxyServer:
-    def __init__(self, iface_ip, port=9999, channels_cb=None):
+    def __init__(self, iface_ip, port=9999, channels_cb=None, record_mgr=None):
         self.iface_ip = iface_ip
         self.port = port
         self.channels_cb = channels_cb or (lambda: [])
+        self.record_mgr = record_mgr
         self.active = {}
         self.lock = threading.Lock()
         self.httpd = None
@@ -106,13 +114,35 @@ class ProxyServer:
 
             def do_GET(self):
                 path = self.path.split('?')[0]
+                if outer.record_mgr is not None and path in ('/', '/admin', '/ui'):
+                    self._send(200, webui.PAGE.encode('utf-8'), 'text/html; charset=utf-8')
+                    return
+                if outer.record_mgr is not None and path.startswith('/api/'):
+                    webui.handle_get(self, outer, path)
+                    return
                 if path in ('/', '/status'):
                     with outer.lock:
                         act = dict(outer.active)
-                    body = json.dumps({'iface': outer.iface_ip, 'port': outer.port,
-                                       'active': act}, ensure_ascii=False).encode()
+                    d = {'iface': outer.iface_ip, 'port': outer.port, 'active': act}
+                    if outer.record_mgr is not None:
+                        try:
+                            d['recordings'] = outer.record_mgr.status()
+                        except Exception:
+                            pass
+                    body = json.dumps(d, ensure_ascii=False).encode()
                     self._send(200, body, 'application/json')
                     return
+                if outer.record_mgr is not None:
+                    if path == '/recordings.json':
+                        body = json.dumps(outer.record_mgr.list_recordings(),
+                                          ensure_ascii=False).encode()
+                        self._send(200, body, 'application/json')
+                        return
+                    if path == '/recordings.m3u':
+                        text = m3u.recordings_m3u(outer.record_mgr.list_recordings(),
+                                                  outer.iface_ip, outer.port)
+                        self._send(200, text.encode('utf-8'), 'audio/x-mpegurl')
+                        return
                 if path in ('/playlist.m3u', '/http.m3u'):
                     chans = outer.channels_cb()
                     lines = ['#EXTM3U']
@@ -151,7 +181,119 @@ class ProxyServer:
                         return
                     self.stream(g, p)
                     return
+                if (len(parts) == 2 and parts[0] == 'vod'
+                        and outer.record_mgr is not None):
+                    self.vod(parts[1], head_only=False)
+                    return
                 self.send_error(404)
+
+            def do_HEAD(self):
+                path = self.path.split('?')[0]
+                parts = path.strip('/').split('/')
+                if (len(parts) == 2 and parts[0] == 'vod'
+                        and outer.record_mgr is not None):
+                    self.vod(parts[1], head_only=True)
+                    return
+                self.send_error(404)
+
+            def do_POST(self):
+                path = self.path.split('?')[0]
+                if outer.record_mgr is None or not path.startswith('/api/'):
+                    self.send_error(404)
+                    return
+                try:
+                    length = int(self.headers.get('Content-Length', 0) or 0)
+                except ValueError:
+                    length = 0
+                body = self.rfile.read(length) if length else b'{}'
+                webui.handle_post(self, outer, path, body)
+
+            def vod(self, rid, head_only=False):
+                """录像点播：只认索引白名单 rid（防路径穿越）；Range 拖动；
+                多分段按字节偏移虚拟拼接；录制中的文件也可边录边看。"""
+                if not re.fullmatch(r'[A-Za-z0-9_\-]+', rid):
+                    self.send_error(404)
+                    return
+                rec = outer.record_mgr.get_recording(rid)
+                if not rec or not rec.get('parts'):
+                    self.send_error(404)
+                    return
+                files = []
+                total = 0
+                for part in rec['parts']:
+                    p = os.path.join(outer.record_mgr.record_dir, part['file'])
+                    try:
+                        sz = os.path.getsize(p)
+                    except OSError:
+                        continue
+                    files.append((p, sz))
+                    total += sz
+                if not files or total == 0:
+                    self.send_error(404)
+                    return
+                rng = self.headers.get('Range', '')
+                start, end = 0, total - 1
+                partial = False
+                m = re.fullmatch(r'bytes=(\d*)-(\d*)', rng.strip()) if rng else None
+                if m:
+                    a, b = m.group(1), m.group(2)
+                    if a == '' and b == '':
+                        self.send_error(416)
+                        return
+                    if a == '':            # 后缀范围 bytes=-n
+                        n = int(b)
+                        if n == 0:
+                            self._range_invalid(total)
+                            return
+                        start = max(0, total - n)
+                    else:
+                        start = int(a)
+                        end = int(b) if b else total - 1
+                    if start >= total:
+                        self._range_invalid(total)
+                        return
+                    end = min(end, total - 1)
+                    partial = True
+                length = end - start + 1
+                self.send_response(206 if partial else 200)
+                self.send_header('Content-Type', 'video/MP2T')
+                self.send_header('Accept-Ranges', 'bytes')
+                self.send_header('Content-Length', str(length))
+                if partial:
+                    self.send_header('Content-Range', 'bytes %d-%d/%d' % (start, end, total))
+                self.send_header('Cache-Control', 'no-cache')
+                self.end_headers()
+                if head_only:
+                    return
+                try:
+                    remaining = length
+                    off = start
+                    for p, sz in files:
+                        if off >= sz:
+                            off -= sz
+                            continue
+                        take = min(sz - off, remaining)
+                        with open(p, 'rb') as f:
+                            f.seek(off)
+                            while take > 0:
+                                chunk = f.read(min(65536, take))
+                                if not chunk:
+                                    break
+                                self.wfile.write(chunk)
+                                take -= len(chunk)
+                                remaining -= len(chunk)
+                        off = 0
+                        if remaining <= 0:
+                            break
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    pass
+                self.close_connection = True
+
+            def _range_invalid(self, total):
+                self.send_response(416)
+                self.send_header('Content-Range', 'bytes */%d' % total)
+                self.send_header('Content-Length', '0')
+                self.end_headers()
 
             def stream(self, group, port):
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
